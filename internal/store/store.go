@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ymh/zk/internal/model"
+	"github.com/sheeppattern/zk/internal/model"
 	"gopkg.in/yaml.v3"
 )
 

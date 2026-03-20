@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/ymh/zk/internal/store"
+	"github.com/sheeppattern/zk/internal/store"
 )
 
 var initCmd = &cobra.Command{

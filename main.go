@@ -1,6 +1,6 @@
 package main
 
-import "github.com/ymh/zk/cmd"
+import "github.com/sheeppattern/zk/cmd"
 
 func main() {
 	cmd.Execute()

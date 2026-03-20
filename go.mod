@@ -1,4 +1,4 @@
-module github.com/ymh/zk
+module github.com/sheeppattern/zk
 
 go 1.26.1
 

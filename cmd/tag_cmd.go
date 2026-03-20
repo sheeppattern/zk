@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/ymh/zk/internal/store"
+	"github.com/sheeppattern/zk/internal/store"
 )
 
 var tagCmd = &cobra.Command{

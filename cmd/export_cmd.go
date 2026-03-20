@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/ymh/zk/internal/model"
-	"github.com/ymh/zk/internal/store"
+	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/zk/internal/store"
 	"gopkg.in/yaml.v3"
 )
 

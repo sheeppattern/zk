@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/ymh/zk/internal/model"
+	"github.com/sheeppattern/zk/internal/model"
 )
 
 // SchemaField describes a single field in a resource schema.

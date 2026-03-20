@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/ymh/zk/internal/model"
+	"github.com/sheeppattern/zk/internal/model"
 )
 
 // noteView is a JSON/YAML-serializable representation of a Note
