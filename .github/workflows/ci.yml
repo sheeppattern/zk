@@ -1,9 +1,15 @@
 name: CI
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      os-matrix:
+        description: 'Test OS matrix'
+        required: false
+        default: 'ubuntu-only'
+        type: choice
+        options:
+          - ubuntu-only
+          - all-platforms
 
 jobs:
   lint:
@@ -25,7 +31,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ inputs.os-matrix == 'all-platforms' && fromJSON('["ubuntu-latest","macos-latest","windows-latest"]') || fromJSON('["ubuntu-latest"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
