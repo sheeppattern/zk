@@ -10,6 +10,9 @@ import (
 	"github.com/sheeppattern/zk/internal/store"
 )
 
+// Version is set at build time via -ldflags.
+var Version = "dev"
+
 var (
 	flagFormat  string
 	flagProject string
