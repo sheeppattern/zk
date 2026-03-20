@@ -29,7 +29,7 @@ Project files (Cursor, Copilot, Windsurf) require --project-dir.`,
 }
 
 func init() {
-	skillGenerateCmd.Flags().String("agents", "all", "comma-separated agent targets: all, claude, gemini, codex, agent-skills, cursor, copilot, windsurf")
+	skillGenerateCmd.Flags().String("agents", "all", "comma-separated agent targets: all, claude, gemini, codex, agent-skills, agent-skills-project, cursor, copilot, windsurf")
 	skillGenerateCmd.Flags().String("project-dir", "", "project directory for project-level files (cursor, copilot, windsurf)")
 	skillGenerateCmd.Flags().Bool("global-only", false, "only generate global (user-level) files")
 	skillCmd.AddCommand(skillGenerateCmd)
@@ -48,7 +48,8 @@ func allAgentTargets() []agentTarget {
 		{Name: "claude", Global: true, WriteFn: writeClaudeSkill},
 		{Name: "gemini", Global: true, WriteFn: writeGeminiInstruction},
 		{Name: "codex", Global: true, WriteFn: writeCodexInstruction},
-		{Name: "agent-skills", Global: false, WriteFn: writeAgentSkillsStandard},
+		{Name: "agent-skills", Global: true, WriteFn: writeAgentSkillsGlobal},
+		{Name: "agent-skills-project", Global: false, WriteFn: writeAgentSkillsProject},
 		{Name: "cursor", Global: false, WriteFn: writeCursorRule},
 		{Name: "copilot", Global: false, WriteFn: writeCopilotInstruction},
 		{Name: "windsurf", Global: false, WriteFn: writeWindsurfRule},
@@ -184,12 +185,20 @@ func writeCodexInstruction(home string) (string, error) {
 	return path, nil
 }
 
-// Agent Skills Standard (agentskills.io): {projectDir}/agents/skills/zk/SKILL.md + references/
-func writeAgentSkillsStandard(projectDir string) (string, error) {
-	dir := filepath.Join(projectDir, "agents", "skills", "zk")
+// Agent Skills Standard (agentskills.io): ~/.agents/skills/zk/SKILL.md (global)
+func writeAgentSkillsGlobal(home string) (string, error) {
+	return writeAgentSkillsDir(filepath.Join(home, ".agents", "skills", "zk"))
+}
+
+// Agent Skills Standard (agentskills.io): {projectDir}/.agents/skills/zk/SKILL.md (project)
+func writeAgentSkillsProject(projectDir string) (string, error) {
+	return writeAgentSkillsDir(filepath.Join(projectDir, ".agents", "skills", "zk"))
+}
+
+func writeAgentSkillsDir(dir string) (string, error) {
 	skillPath := filepath.Join(dir, "SKILL.md")
 
-	content := claudeFrontmatter + zkInstructionContent // same frontmatter as Claude (name + description)
+	content := claudeFrontmatter + zkInstructionContent
 	if err := writeFile(skillPath, content); err != nil {
 		return "", err
 	}
