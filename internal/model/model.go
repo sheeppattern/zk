@@ -73,6 +73,7 @@ type Metadata struct {
 	Source    string    `yaml:"source"     json:"source"`
 	Status   string    `yaml:"status"     json:"status"`
 	Summary  string    `yaml:"summary,omitempty" json:"summary,omitempty"`
+	Author   string    `yaml:"author,omitempty"  json:"author,omitempty"`
 }
 
 // Project groups related notes together.
@@ -89,6 +90,7 @@ type Config struct {
 	StorePath           string   `yaml:"store_path"      json:"store_path"`
 	DefaultProject      string   `yaml:"default_project" json:"default_project"`
 	DefaultFormat       string   `yaml:"default_format"  json:"default_format"`
+	DefaultAuthor       string   `yaml:"default_author,omitempty" json:"default_author,omitempty"`
 	CustomRelationTypes []string `yaml:"custom_relation_types,omitempty" json:"custom_relation_types,omitempty"`
 }
 

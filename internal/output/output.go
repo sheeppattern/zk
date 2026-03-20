@@ -166,6 +166,9 @@ func (f *Formatter) printNoteMD(note *model.Note) error {
 	if note.Metadata.Summary != "" {
 		fmt.Fprintf(&b, "**Summary**: %s\n", note.Metadata.Summary)
 	}
+	if note.Metadata.Author != "" {
+		fmt.Fprintf(&b, "**Author**: %s\n", note.Metadata.Author)
+	}
 	fmt.Fprintf(&b, "**Created**: %s\n", note.Metadata.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "\n%s\n", note.Content)
 

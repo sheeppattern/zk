@@ -53,8 +53,10 @@ var configSetCmd = &cobra.Command{
 				return fmt.Errorf("invalid format %q: must be one of json, yaml, md", value)
 			}
 			cfg.DefaultFormat = value
+		case "default_author":
+			cfg.DefaultAuthor = value
 		default:
-			return fmt.Errorf("unknown config key %q; valid keys: store_path, default_project, default_format", key)
+			return fmt.Errorf("unknown config key %q; valid keys: store_path, default_project, default_format, default_author", key)
 		}
 
 		if err := s.SaveConfig(cfg); err != nil {

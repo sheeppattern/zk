@@ -30,6 +30,7 @@ var searchCmd = &cobra.Command{
 		createdAfterStr, _ := cmd.Flags().GetString("created-after")
 		createdBeforeStr, _ := cmd.Flags().GetString("created-before")
 		layer, _ := cmd.Flags().GetString("layer")
+		authorFilter, _ := cmd.Flags().GetString("author")
 
 		var createdAfter, createdBefore time.Time
 		if createdAfterStr != "" {
@@ -123,6 +124,11 @@ var searchCmd = &cobra.Command{
 				continue
 			}
 
+			// Filter by --author.
+			if authorFilter != "" && !strings.EqualFold(n.Metadata.Author, authorFilter) {
+				continue
+			}
+
 			// Filter by --relation: only include notes that have outgoing links with the specified relation type.
 			if relation != "" {
 				hasRelation := false
@@ -189,6 +195,7 @@ func init() {
 	searchCmd.Flags().String("created-after", "", "filter notes created on or after this date (YYYY-MM-DD)")
 	searchCmd.Flags().String("created-before", "", "filter notes created on or before this date (YYYY-MM-DD)")
 	searchCmd.Flags().String("layer", "", "filter by layer (concrete, abstract)")
+	searchCmd.Flags().String("author", "", "filter by note author")
 
 	rootCmd.AddCommand(searchCmd)
 }

@@ -33,6 +33,7 @@ type ReflectStats struct {
 }
 
 var flagApply bool
+var flagSuggestLinks bool
 
 var reflectCmd = &cobra.Command{
 	Use:   "reflect",
@@ -47,6 +48,7 @@ var reflectCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(reflectCmd)
 	reflectCmd.Flags().BoolVar(&flagApply, "apply", false, "auto-create suggested abstract notes")
+	reflectCmd.Flags().BoolVar(&flagSuggestLinks, "suggest-links", false, "suggest missing links between similar notes")
 }
 
 func runReflect(cmd *cobra.Command, args []string) error {
@@ -59,6 +61,12 @@ func runReflect(cmd *cobra.Command, args []string) error {
 	}
 
 	report := buildReflectReport(notes)
+
+	// --suggest-links: analyze note content for potential missing links.
+	if flagSuggestLinks {
+		suggestions := suggestLinks(notes)
+		report.Insights = append(report.Insights, suggestions...)
+	}
 
 	// --apply: create suggested abstract notes.
 	if flagApply {
@@ -286,6 +294,123 @@ func buildReflectReport(notes []*model.Note) *ReflectReport {
 	return report
 }
 
+// charTrigrams extracts a set of character trigrams from text.
+// This approach handles CJK languages well because it doesn't rely on
+// word boundaries or spaces — "구조화와" and "구조는" share the trigram "구조".
+func charTrigrams(text string) map[string]bool {
+	runes := []rune(text)
+	set := make(map[string]bool)
+	for i := 0; i+3 <= len(runes); i++ {
+		tri := string(runes[i : i+3])
+		// Skip trigrams that are all whitespace/punctuation.
+		hasContent := false
+		for _, r := range tri {
+			if r > ' ' && r != '.' && r != ',' && r != '!' && r != '?' {
+				hasContent = true
+				break
+			}
+		}
+		if hasContent {
+			set[tri] = true
+		}
+	}
+	return set
+}
+
+// suggestLinks analyzes note content to find pairs that share significant
+// keyword overlap but have no existing link, suggesting potential connections.
+func suggestLinks(notes []*model.Note) []Insight {
+	type candidate struct {
+		a, b       string
+		aTitle     string
+		bTitle     string
+		similarity float64
+	}
+
+	// Extract character trigram sets per note for CJK-friendly similarity.
+	keywords := make(map[string]map[string]bool)
+	for _, n := range notes {
+		text := strings.ToLower(n.Title + " " + n.Content)
+		keywords[n.ID] = charTrigrams(text)
+	}
+
+	// Build existing link set (bidirectional).
+	type pair struct{ a, b string }
+	existingLinks := make(map[pair]bool)
+	for _, n := range notes {
+		for _, link := range n.Links {
+			p := pair{n.ID, link.TargetID}
+			if p.a > p.b {
+				p = pair{p.b, p.a}
+			}
+			existingLinks[p] = true
+		}
+	}
+
+	// Compare all pairs.
+	var candidates []candidate
+	for i := 0; i < len(notes); i++ {
+		for j := i + 1; j < len(notes); j++ {
+			a, b := notes[i], notes[j]
+			p := pair{a.ID, b.ID}
+			if p.a > p.b {
+				p = pair{p.b, p.a}
+			}
+			if existingLinks[p] {
+				continue
+			}
+
+			wordsA := keywords[a.ID]
+			wordsB := keywords[b.ID]
+
+			// Jaccard similarity.
+			if len(wordsA) == 0 || len(wordsB) == 0 {
+				continue
+			}
+			intersection := 0
+			for w := range wordsA {
+				if wordsB[w] {
+					intersection++
+				}
+			}
+			union := len(wordsA) + len(wordsB) - intersection
+			if union == 0 {
+				continue
+			}
+			sim := float64(intersection) / float64(union)
+			if sim > 0.08 {
+				candidates = append(candidates, candidate{
+					a: a.ID, b: b.ID,
+					aTitle: a.Title, bTitle: b.Title,
+					similarity: sim,
+				})
+			}
+		}
+	}
+
+	// Sort by similarity descending, take top 10.
+	for i := 0; i < len(candidates); i++ {
+		for j := i + 1; j < len(candidates); j++ {
+			if candidates[j].similarity > candidates[i].similarity {
+				candidates[i], candidates[j] = candidates[j], candidates[i]
+			}
+		}
+	}
+	if len(candidates) > 10 {
+		candidates = candidates[:10]
+	}
+
+	var insights []Insight
+	for _, c := range candidates {
+		insights = append(insights, Insight{
+			Type:        "suggested_link",
+			SourceNotes: []string{c.a, c.b},
+			Suggestion:  fmt.Sprintf("%s(%s)와 %s(%s) — 유사도 %.0f%%, 연결을 검토하세요", c.a, c.aTitle, c.b, c.bTitle, c.similarity*100),
+		})
+	}
+	return insights
+}
+
 func printReflectMD(report *ReflectReport) {
 	var b strings.Builder
 
@@ -335,7 +460,18 @@ func printReflectMD(report *ReflectReport) {
 		fmt.Fprintf(&b, "\n")
 	}
 
-	if len(tensions) == 0 && len(hubs) == 0 && len(orphans) == 0 && len(bloated) == 0 {
+	suggested := filterInsights(report.Insights, "suggested_link")
+	if len(suggested) > 0 {
+		fmt.Fprintf(&b, "### Suggested Links\n\n")
+		for _, ins := range suggested {
+			if len(ins.SourceNotes) >= 2 {
+				fmt.Fprintf(&b, "- [%s ↔ %s] %s\n", ins.SourceNotes[0], ins.SourceNotes[1], ins.Suggestion)
+			}
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
+	if len(tensions) == 0 && len(hubs) == 0 && len(orphans) == 0 && len(bloated) == 0 && len(suggested) == 0 {
 		fmt.Fprintf(&b, "No insights found. Notes are well-structured.\n")
 	}
 
