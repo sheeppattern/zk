@@ -20,6 +20,14 @@ go test ./cmd/ -v -count=1    # integration tests (builds binary)
 go build -ldflags "-X github.com/sheeppattern/zk/cmd.Version=0.1.0" -o zk.exe .
 ```
 
+## Skill Content Sync Policy
+
+When CLI commands, flags, relation types, or workflows change, update the skill instruction content in `cmd/skill_cmd.go`:
+- `zkInstructionContent` — shared command reference used by all 6 agent tools (Claude, Gemini, Codex, Cursor, Copilot, Windsurf)
+- `domainGuideContent` — best practices and domain knowledge
+- These are the primary way AI agents learn to use zk, so they must stay accurate and complete
+- After updating, run `zk skill generate --project-dir .` to verify the generated files render correctly
+
 ## Test Coverage Policy
 
 When adding or modifying features, always write tests:
