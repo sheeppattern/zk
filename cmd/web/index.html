@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>zk — Knowledge Graph</title>
+<style>
+:root {
+  --bg-primary: #0F172A;
+  --bg-secondary: #1E293B;
+  --bg-tertiary: #334155;
+  --bg-hover: #3B4B63;
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --accent: #22C55E;
+  --accent-hover: #16A34A;
+  --accent-dim: rgba(34,197,94,.12);
+  --blue: #3B82F6;
+  --purple: #A78BFA;
+  --orange: #F59E0B;
+  --danger: #EF4444;
+  --danger-dim: rgba(239,68,68,.12);
+  --border: #334155;
+  --border-light: #475569;
+  --font-heading: ui-monospace, 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --transition: 150ms ease-out;
+  --shadow: 0 2px 8px rgba(0,0,0,.3);
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font-body); background: var(--bg-primary); color: var(--text-primary); height: 100vh; overflow: hidden; }
+
+#app { display: grid; grid-template-columns: 260px 1fr 300px; height: 100vh; }
+
+.sidebar { background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.sidebar-header { padding: 16px 14px 12px; border-bottom: 1px solid var(--border); }
+.sidebar-brand { font-family: var(--font-heading); font-size: 15px; font-weight: 700; color: var(--accent); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.sidebar-brand span { color: var(--text-secondary); font-weight: 400; font-size: 12px; }
+.search-input { width: 100%; padding: 7px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary); font-size: 12px; font-family: var(--font-body); outline: none; }
+.search-input:focus { border-color: var(--accent); }
+.search-input::placeholder { color: var(--text-muted); }
+.filter-bar { display: flex; gap: 4px; margin-top: 8px; }
+.filter-btn { flex: 1; padding: 4px 0; border-radius: 4px; font-size: 10px; text-align: center; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); transition: var(--transition); font-family: var(--font-body); }
+.filter-btn:hover { border-color: var(--text-secondary); }
+.filter-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sidebar-tree { flex: 1; overflow-y: auto; padding: 8px 6px; }
+.project-section { margin-bottom: 4px; }
+.project-header { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--radius); cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-secondary); transition: var(--transition); user-select: none; }
+.project-header:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.project-header svg { width: 12px; height: 12px; transition: transform var(--transition); flex-shrink: 0; }
+.project-header.collapsed svg { transform: rotate(-90deg); }
+.project-header .p-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-header .p-count { font-size: 10px; color: var(--text-muted); font-weight: 400; }
+.project-notes { padding-left: 12px; }
+.project-notes.hidden { display: none; }
+.note-item { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 4px; cursor: pointer; transition: var(--transition); }
+.note-item:hover { background: var(--bg-tertiary); }
+.note-item:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.note-item.active { background: var(--accent-dim); }
+.note-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.note-dot.concrete { background: var(--blue); }
+.note-dot.abstract { background: var(--purple); border-radius: 1px; transform: rotate(45deg); }
+.note-item .n-title { font-size: 12px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.4; }
+.sidebar-footer { padding: 8px 14px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text-muted); text-align: center; }
+
+.editor { display: flex; flex-direction: column; overflow: hidden; background: var(--bg-primary); }
+.editor-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 14px; }
+.editor-content { flex: 1; overflow-y: auto; padding: 24px 32px; display: none; }
+.editor-content.visible { display: block; }
+.editor-topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.editor-id { font-family: var(--font-heading); font-size: 11px; color: var(--text-muted); background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; }
+.layer-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+.layer-badge.concrete { background: rgba(59,130,246,.15); color: var(--blue); }
+.layer-badge.abstract { background: rgba(167,139,250,.15); color: var(--purple); }
+.editor-project { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+.title-input { width: 100%; font-size: 22px; font-weight: 700; font-family: var(--font-heading); background: transparent; border: none; color: var(--text-primary); outline: none; padding: 4px 0; margin-bottom: 12px; border-bottom: 2px solid transparent; transition: border-color var(--transition); }
+.title-input:focus { border-bottom-color: var(--accent); }
+.content-textarea { width: 100%; min-height: 200px; resize: vertical; font-family: var(--font-body); font-size: 14px; line-height: 1.7; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary); padding: 14px; outline: none; transition: border-color var(--transition); }
+.content-textarea:focus { border-color: var(--accent); }
+.save-bar { display: none; align-items: center; gap: 10px; margin: 12px 0; padding: 10px 14px; background: var(--accent-dim); border: 1px solid var(--accent); border-radius: var(--radius); }
+.save-bar.visible { display: flex; }
+.save-bar .save-text { font-size: 12px; color: var(--accent); flex: 1; }
+.save-btn { padding: 6px 18px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font-body); transition: background var(--transition); }
+.save-btn:hover { background: var(--accent-hover); }
+.save-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--text-muted); margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.tags-area { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.tag-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: var(--bg-tertiary); border-radius: 12px; font-size: 11px; color: #67E8F9; transition: var(--transition); }
+.tag-chip:hover { background: var(--bg-hover); }
+.tag-remove { width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); font-size: 10px; transition: var(--transition); }
+.tag-remove:hover { background: var(--danger-dim); color: var(--danger); }
+.tag-input { padding: 3px 8px; background: transparent; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-primary); font-size: 11px; width: 80px; outline: none; font-family: var(--font-body); }
+.tag-input:focus { border-color: var(--accent); border-style: solid; }
+.link-group-label { font-size: 10px; color: var(--text-muted); margin: 10px 0 4px; }
+.link-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg-secondary); border-radius: var(--radius); margin-bottom: 3px; cursor: pointer; transition: var(--transition); }
+.link-item:hover { background: var(--bg-tertiary); }
+.link-type { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 6px; flex-shrink: 0; }
+.link-type.supports { background: rgba(34,197,94,.15); color: var(--accent); }
+.link-type.contradicts { background: rgba(239,68,68,.15); color: var(--danger); }
+.link-type.extends { background: rgba(59,130,246,.15); color: var(--blue); }
+.link-type.abstracts { background: rgba(167,139,250,.15); color: var(--purple); }
+.link-type.grounds { background: rgba(245,158,11,.15); color: var(--orange); }
+.link-type.causes { background: rgba(245,158,11,.15); color: var(--orange); }
+.link-type.related { background: rgba(148,163,184,.15); color: var(--text-secondary); }
+.link-type.example-of { background: rgba(103,232,249,.12); color: #67E8F9; }
+.link-type.replaces { background: rgba(245,158,11,.15); color: var(--orange); }
+.link-type.invalidates { background: rgba(239,68,68,.15); color: var(--danger); }
+.link-title { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-weight { font-size: 10px; color: var(--text-muted); }
+.link-cross { font-size: 8px; padding: 1px 4px; border-radius: 3px; background: rgba(245,158,11,.15); color: var(--orange); }
+.link-delete { width: 20px; height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); transition: var(--transition); flex-shrink: 0; }
+.link-delete:hover { background: var(--danger-dim); color: var(--danger); }
+.link-delete svg { width: 12px; height: 12px; }
+.meta-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 11px; margin-top: 8px; }
+.meta-label { color: var(--text-muted); }
+.meta-value { color: var(--text-secondary); }
+.note-delete-btn { margin-top: 24px; padding: 8px 16px; background: transparent; border: 1px solid var(--danger); border-radius: var(--radius); color: var(--danger); font-size: 12px; cursor: pointer; font-family: var(--font-body); transition: var(--transition); }
+.note-delete-btn:hover { background: var(--danger-dim); }
+.note-delete-btn:focus { outline: 2px solid var(--danger); outline-offset: 2px; }
+
+.graph-panel { background: var(--bg-secondary); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.graph-header { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .5px; }
+.graph-canvas-wrap { flex: 1; position: relative; }
+#graphCanvas { width: 100%; height: 100%; display: block; }
+.graph-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 12px; }
+.graph-legend { padding: 8px 14px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 8px; font-size: 9px; color: var(--text-muted); }
+.leg { display: flex; align-items: center; gap: 3px; }
+.leg i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+.tooltip { position: fixed; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px; font-size: 11px; pointer-events: none; z-index: 100; max-width: 240px; display: none; box-shadow: var(--shadow); line-height: 1.4; }
+.toast { position: fixed; bottom: 20px; right: 20px; padding: 10px 18px; border-radius: var(--radius); font-size: 12px; z-index: 200; opacity: 0; transition: opacity 200ms ease-out; box-shadow: var(--shadow); }
+.toast.visible { opacity: 1; }
+.toast.success { background: var(--accent); color: #fff; }
+.toast.error { background: var(--danger); color: #fff; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+        zk <span>Knowledge Graph</span>
+      </div>
+      <input class="search-input" id="searchInput" type="text" placeholder="Search notes..." aria-label="Search notes" />
+      <div class="filter-bar" id="filterBar"></div>
+    </div>
+    <div class="sidebar-tree" id="sidebarTree"></div>
+    <div class="sidebar-footer" id="sidebarFooter"></div>
+  </div>
+
+  <div class="editor">
+    <div class="editor-empty" id="editorEmpty">Select a note to view and edit</div>
+    <div class="editor-content" id="editorContent">
+      <div class="editor-topbar">
+        <span class="editor-id" id="editorId"></span>
+        <span class="layer-badge" id="editorLayer"></span>
+        <span class="editor-project" id="editorProject"></span>
+      </div>
+      <input class="title-input" id="titleInput" type="text" aria-label="Note title" />
+      <div class="save-bar" id="saveBar">
+        <span class="save-text">Unsaved changes</span>
+        <button class="save-btn" id="saveBtn" aria-label="Save changes">Save (Ctrl+S)</button>
+      </div>
+      <textarea class="content-textarea" id="contentArea" aria-label="Note content"></textarea>
+      <div class="section-label">Tags</div>
+      <div class="tags-area" id="tagsArea"></div>
+      <div class="section-label">Links</div>
+      <div id="linksArea"></div>
+      <div class="section-label">Metadata</div>
+      <div class="meta-grid" id="metaGrid"></div>
+      <button class="note-delete-btn" id="deleteBtn" aria-label="Delete this note">Delete Note</button>
+    </div>
+  </div>
+
+  <div class="graph-panel">
+    <div class="graph-header">Neighborhood Graph</div>
+    <div class="graph-canvas-wrap">
+      <canvas id="graphCanvas"></canvas>
+      <div class="graph-empty" id="graphEmpty">Select a note to see its connections</div>
+    </div>
+    <div class="graph-legend">
+      <div class="leg"><i style="background:var(--blue)"></i>concrete</div>
+      <div class="leg"><i style="background:var(--purple)"></i>abstract</div>
+      <div class="leg"><i style="background:var(--accent)"></i>supports</div>
+      <div class="leg"><i style="background:var(--danger)"></i>contradicts</div>
+      <div class="leg"><i style="background:var(--blue)"></i>extends</div>
+      <div class="leg"><i style="background:var(--orange)"></i>grounds</div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══ STATE ═══ */
+const S = { projects:[], allNotes:[], noteMap:{}, selected:null, dirty:false, filter:'all', searchQuery:'', collapsed:{} };
+
+/* ═══ SVG ICONS ═══ */
+const ICO = {
+  chevron: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>',
+};
+
+/* ═══ API (with error handling) ═══ */
+const api = {
+  async get(p) { try { const r = await fetch(p); return r.json(); } catch(e) { showToast('Network error','error'); return {error:e.message}; } },
+  async put(p, b) { try { const r = await fetch(p, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); return r.json(); } catch(e) { showToast('Network error','error'); return {error:e.message}; } },
+  async del(p, b) { try { const o={method:'DELETE'}; if(b){o.headers={'Content-Type':'application/json'};o.body=JSON.stringify(b);} const r=await fetch(p,o); return r.json(); } catch(e) { showToast('Network error','error'); return {error:e.message}; } },
+  async post(p, b) { try { const r = await fetch(p, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); return r.json(); } catch(e) { showToast('Network error','error'); return {error:e.message}; } },
+};
+
+/* ═══ INIT ═══ */
+async function init() {
+  const data = await api.get('/api/all-data');
+  if (data.error) return;
+  S.projects = data.projects || [];
+  S.allNotes = data.notes || [];
+  S.noteMap = {};
+  S.allNotes.forEach(n => S.noteMap[n.id] = n);
+  initFilterBar();
+  renderSidebar();
+  updateFooter();
+  setupGraph();
+  setupEvents();
+}
+
+/* ═══ FILTER BAR (event delegation, no inline onclick) ═══ */
+function initFilterBar() {
+  const bar = document.getElementById('filterBar');
+  bar.innerHTML = ['all','concrete','abstract'].map(f =>
+    `<button class="filter-btn ${f==='all'?'active':''}" data-filter="${f}" aria-label="Show ${f} notes">${f.charAt(0).toUpperCase()+f.slice(1)}</button>`
+  ).join('');
+  bar.addEventListener('click', e => {
+    const btn = e.target.closest('[data-filter]');
+    if (!btn) return;
+    S.filter = btn.dataset.filter;
+    bar.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderSidebar();
+  });
+}
+
+/* ═══ SIDEBAR (event delegation, data-* attrs, no inline handlers) ═══ */
+function getFilteredNotes() {
+  let notes = S.allNotes;
+  if (S.filter === 'concrete') notes = notes.filter(n => n.layer !== 'abstract');
+  if (S.filter === 'abstract') notes = notes.filter(n => n.layer === 'abstract');
+  if (S.searchQuery) {
+    const q = S.searchQuery.toLowerCase();
+    notes = notes.filter(n => n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || (n.tags||[]).some(t => t.toLowerCase().includes(q)));
+  }
+  return notes;
+}
+
+function renderSidebar() {
+  const notes = getFilteredNotes();
+  const tree = document.getElementById('sidebarTree');
+  const groups = {}; const projMap = {};
+  S.projects.forEach(p => { projMap[p.id] = p; groups[p.id] = []; });
+  groups['__global'] = [];
+  notes.forEach(n => { const pid = n.project_id || '__global'; if (!groups[pid]) groups[pid] = []; groups[pid].push(n); });
+
+  let html = '';
+  for (const [pid, pnotes] of Object.entries(groups)) {
+    if (pnotes.length === 0 && pid !== '__global') continue;
+    const proj = projMap[pid]; const name = proj ? proj.name : 'Global';
+    const collapsed = S.collapsed[pid] || false;
+    html += `<div class="project-section">
+      <div class="project-header ${collapsed?'collapsed':''}" data-project-id="${esc(pid)}" tabindex="0" role="button" aria-expanded="${!collapsed}">
+        ${ICO.chevron}<span class="p-name">${esc(name)}</span><span class="p-count">${pnotes.length}</span>
+      </div><div class="project-notes ${collapsed?'hidden':''}">`;
+    pnotes.forEach(n => {
+      const layer = n.layer === 'abstract' ? 'abstract' : 'concrete';
+      const active = S.selected && S.selected.id === n.id ? 'active' : '';
+      html += `<div class="note-item ${active}" data-note-id="${esc(n.id)}" data-note-project="${esc(n.project_id||'')}" tabindex="0" role="button">
+        <div class="note-dot ${layer}"></div><span class="n-title">${esc(trunc(n.title,35))}</span></div>`;
+    });
+    html += '</div></div>';
+  }
+  tree.innerHTML = html || '<div style="padding:20px;color:var(--text-muted);font-size:12px;text-align:center">No notes found</div>';
+}
+
+function updateFooter() {
+  const c = S.allNotes.filter(n => n.layer !== 'abstract').length;
+  const a = S.allNotes.length - c;
+  const l = S.allNotes.reduce((s,n) => s + (n.links||[]).length, 0);
+  document.getElementById('sidebarFooter').textContent = `${S.allNotes.length} notes (${c}C/${a}A) \u00b7 ${l} links \u00b7 ${S.projects.length} projects`;
+}
+
+/* ═══ EDITOR ═══ */
+async function selectNote(id, projectId) {
+  if (S.dirty && !confirm('Discard unsaved changes?')) return;
+  S.dirty = false;
+  cacheLayout();
+  const note = await api.get(`/api/note?id=${encodeURIComponent(id)}&project=${encodeURIComponent(projectId)}`);
+  if (note.error) { showToast(note.error, 'error'); return; }
+  S.selected = note;
+  S.noteMap[note.id] = note;
+  document.getElementById('editorEmpty').style.display = 'none';
+  document.getElementById('editorContent').classList.add('visible');
+  document.getElementById('editorId').textContent = note.id;
+  const layerEl = document.getElementById('editorLayer');
+  layerEl.textContent = note.layer;
+  layerEl.className = 'layer-badge ' + note.layer;
+  const proj = S.projects.find(p => p.id === note.project_id);
+  document.getElementById('editorProject').textContent = proj ? proj.name : 'Global';
+  document.getElementById('titleInput').value = note.title;
+  document.getElementById('contentArea').value = note.content;
+  document.getElementById('saveBar').classList.remove('visible');
+  renderTags(note);
+  renderLinks(note);
+  renderMeta(note);
+  document.querySelectorAll('.note-item').forEach(el => el.classList.toggle('active', el.dataset.noteId === id));
+  updateGraph(note.id);
+}
+
+function markDirty() {
+  if (!S.dirty) { S.dirty = true; document.getElementById('saveBar').classList.add('visible'); }
+}
+
+async function saveNote() {
+  if (!S.selected) return;
+  const result = await api.put(`/api/note?id=${encodeURIComponent(S.selected.id)}&project=${encodeURIComponent(S.selected.project_id)}`, {
+    title: document.getElementById('titleInput').value,
+    content: document.getElementById('contentArea').value,
+  });
+  if (result.error) { showToast(result.error, 'error'); return; }
+  S.selected = result; S.noteMap[result.id] = result;
+  const idx = S.allNotes.findIndex(n => n.id === result.id);
+  if (idx >= 0) S.allNotes[idx] = result;
+  renderSidebar();
+  S.dirty = false;
+  document.getElementById('saveBar').classList.remove('visible');
+  showToast('Saved', 'success');
+}
+
+function renderTags(note) {
+  const area = document.getElementById('tagsArea');
+  let html = '';
+  (note.tags || []).forEach(t => {
+    html += `<span class="tag-chip">${esc(t)}<span class="tag-remove" data-tag-remove="${esc(t)}" title="Remove tag" role="button" tabindex="0" aria-label="Remove tag ${esc(t)}">${ICO.x}</span></span>`;
+  });
+  html += `<input class="tag-input" id="tagInput" type="text" placeholder="add tag..." aria-label="Add new tag" />`;
+  area.innerHTML = html;
+}
+
+async function addTag(tag) {
+  if (!S.selected) return;
+  const result = await api.post('/api/tag', { note_id: S.selected.id, project_id: S.selected.project_id, tag, action:'add' });
+  if (result.error) { showToast(result.error,'error'); return; }
+  S.selected = result; S.noteMap[result.id] = result;
+  const idx = S.allNotes.findIndex(n => n.id === result.id);
+  if (idx >= 0) S.allNotes[idx] = result;
+  renderTags(result);
+  showToast(`Tag "${tag}" added`, 'success');
+}
+
+async function removeTag(tag) {
+  if (!S.selected) return;
+  const result = await api.post('/api/tag', { note_id: S.selected.id, project_id: S.selected.project_id, tag, action:'remove' });
+  if (result.error) { showToast(result.error,'error'); return; }
+  S.selected = result; S.noteMap[result.id] = result;
+  const idx = S.allNotes.findIndex(n => n.id === result.id);
+  if (idx >= 0) S.allNotes[idx] = result;
+  renderTags(result);
+  showToast(`Tag "${tag}" removed`, 'success');
+}
+
+function renderLinks(note) {
+  const area = document.getElementById('linksArea');
+  const out = note.links || [];
+  const inc = [];
+  S.allNotes.forEach(n => { (n.links||[]).forEach(l => { if (l.target_id === note.id && n.id !== note.id) inc.push({...l, source_id:n.id, source_project:n.project_id}); }); });
+  let html = '';
+  if (out.length) {
+    html += '<div class="link-group-label">Outgoing &rarr;</div>';
+    out.forEach(l => {
+      const t = S.noteMap[l.target_id]; const title = t ? t.title : l.target_id;
+      const cross = t && t.project_id !== note.project_id;
+      const tp = t ? t.project_id : note.project_id;
+      html += `<div class="link-item" data-link-note="${esc(l.target_id)}" data-link-project="${esc(tp)}">
+        <span class="link-type ${l.relation_type}">${esc(l.relation_type)}</span>
+        <span class="link-title">${esc(trunc(title,30))}</span>
+        ${cross ? '<span class="link-cross">cross</span>' : ''}
+        <span class="link-weight">${l.weight||''}</span>
+        <span class="link-delete" data-del-source="${esc(note.id)}" data-del-target="${esc(l.target_id)}" data-del-type="${esc(l.relation_type)}" data-del-project="${esc(note.project_id)}" data-del-target-project="${esc(tp)}" title="Remove link" role="button" tabindex="0" aria-label="Remove link">${ICO.trash}</span>
+      </div>`;
+    });
+  }
+  if (inc.length) {
+    html += '<div class="link-group-label">&larr; Incoming</div>';
+    inc.forEach(l => {
+      const s = S.noteMap[l.source_id]; const title = s ? s.title : l.source_id;
+      const cross = l.source_project !== note.project_id;
+      html += `<div class="link-item" data-link-note="${esc(l.source_id)}" data-link-project="${esc(l.source_project||note.project_id)}">
+        <span class="link-type ${l.relation_type}">${esc(l.relation_type)}</span>
+        <span class="link-title">${esc(trunc(title,30))}</span>
+        ${cross ? '<span class="link-cross">cross</span>' : ''}
+        <span class="link-weight">${l.weight||''}</span>
+        <span class="link-delete" data-del-source="${esc(l.source_id)}" data-del-target="${esc(note.id)}" data-del-type="${esc(l.relation_type)}" data-del-project="${esc(l.source_project||note.project_id)}" data-del-target-project="${esc(note.project_id)}" title="Remove link" role="button" tabindex="0" aria-label="Remove link">${ICO.trash}</span>
+      </div>`;
+    });
+  }
+  if (!out.length && !inc.length) html = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No links</div>';
+  area.innerHTML = html;
+}
+
+async function deleteLink(source, target, type, project, targetProject) {
+  if (!confirm(`Remove ${type} link?`)) return;
+  const result = await api.del('/api/link', { source, target, type, project, target_project: targetProject });
+  if (result.error) { showToast(result.error, 'error'); return; }
+  await refreshData();
+  if (S.selected) { const fresh = S.noteMap[S.selected.id]; if (fresh) { S.selected = fresh; renderLinks(fresh); updateGraph(fresh.id); } }
+  showToast('Link removed', 'success');
+}
+
+function renderMeta(note) {
+  const cr = note.metadata?.created_at ? new Date(note.metadata.created_at).toLocaleString() : '\u2014';
+  const up = note.metadata?.updated_at ? new Date(note.metadata.updated_at).toLocaleString() : '\u2014';
+  const author = note.metadata?.author || '\u2014';
+  document.getElementById('metaGrid').innerHTML = `
+    <span class="meta-label">Created</span><span class="meta-value">${esc(cr)}</span>
+    <span class="meta-label">Updated</span><span class="meta-value">${esc(up)}</span>
+    <span class="meta-label">Author</span><span class="meta-value">${esc(author)}</span>`;
+}
+
+async function deleteCurrentNote() {
+  if (!S.selected) return;
+  if (!confirm(`Delete "${S.selected.title}"? This moves it to trash.`)) return;
+  try {
+    const result = await api.del(`/api/note?id=${encodeURIComponent(S.selected.id)}&project=${encodeURIComponent(S.selected.project_id)}`);
+    if (result.error) { showToast(result.error, 'error'); return; }
+  } catch (err) { showToast('Failed to delete: ' + err.message, 'error'); return; }
+  S.allNotes = S.allNotes.filter(n => n.id !== S.selected.id);
+  delete S.noteMap[S.selected.id];
+  S.selected = null; S.dirty = false;
+  document.getElementById('editorEmpty').style.display = '';
+  document.getElementById('editorContent').classList.remove('visible');
+  renderSidebar(); updateFooter(); clearGraph();
+  showToast('Note deleted', 'success');
+}
+
+async function refreshData() {
+  const data = await api.get('/api/all-data');
+  if (data.error) return;
+  S.projects = data.projects || []; S.allNotes = data.notes || [];
+  S.noteMap = {}; S.allNotes.forEach(n => S.noteMap[n.id] = n);
+  renderSidebar(); updateFooter();
+}
+
+/* ═══ EVENTS (centralized delegation) ═══ */
+function setupEvents() {
+  const tree = document.getElementById('sidebarTree');
+  // Sidebar click delegation
+  tree.addEventListener('click', e => {
+    const del = e.target.closest('[data-del-source]');
+    if (del) { e.stopPropagation(); deleteLink(del.dataset.delSource, del.dataset.delTarget, del.dataset.delType, del.dataset.delProject, del.dataset.delTargetProject); return; }
+    const noteEl = e.target.closest('[data-note-id]');
+    if (noteEl) { selectNote(noteEl.dataset.noteId, noteEl.dataset.noteProject); return; }
+    const projEl = e.target.closest('[data-project-id]');
+    if (projEl) { S.collapsed[projEl.dataset.projectId] = !S.collapsed[projEl.dataset.projectId]; renderSidebar(); return; }
+  });
+  // Keyboard on sidebar items
+  tree.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const noteEl = e.target.closest('[data-note-id]');
+      if (noteEl) { e.preventDefault(); selectNote(noteEl.dataset.noteId, noteEl.dataset.noteProject); return; }
+      const projEl = e.target.closest('[data-project-id]');
+      if (projEl) { e.preventDefault(); S.collapsed[projEl.dataset.projectId] = !S.collapsed[projEl.dataset.projectId]; renderSidebar(); }
+    }
+  });
+
+  // Editor events
+  document.getElementById('titleInput').addEventListener('input', markDirty);
+  document.getElementById('contentArea').addEventListener('input', markDirty);
+  document.getElementById('saveBtn').addEventListener('click', saveNote);
+  document.getElementById('deleteBtn').addEventListener('click', deleteCurrentNote);
+
+  // Tags delegation
+  document.getElementById('tagsArea').addEventListener('click', e => {
+    const rm = e.target.closest('[data-tag-remove]');
+    if (rm) removeTag(rm.dataset.tagRemove);
+  });
+  document.getElementById('tagsArea').addEventListener('keydown', e => {
+    if (e.target.id === 'tagInput' && e.key === 'Enter' && e.target.value.trim()) {
+      addTag(e.target.value.trim()); e.target.value = '';
+    }
+    const rm = e.target.closest('[data-tag-remove]');
+    if (rm && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); removeTag(rm.dataset.tagRemove); }
+  });
+
+  // Links delegation
+  document.getElementById('linksArea').addEventListener('click', e => {
+    const del = e.target.closest('[data-del-source]');
+    if (del) { e.stopPropagation(); deleteLink(del.dataset.delSource, del.dataset.delTarget, del.dataset.delType, del.dataset.delProject, del.dataset.delTargetProject); return; }
+    const linkEl = e.target.closest('[data-link-note]');
+    if (linkEl) selectNote(linkEl.dataset.linkNote, linkEl.dataset.linkProject);
+  });
+
+  // Search with debounce
+  let searchTimer = null;
+  document.getElementById('searchInput').addEventListener('input', e => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { S.searchQuery = e.target.value; renderSidebar(); }, 200);
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (S.dirty) saveNote(); }
+    if (e.key === 'Escape') { document.getElementById('searchInput').value = ''; S.searchQuery = ''; renderSidebar(); }
+  });
+
+  // Beforeunload guard
+  window.addEventListener('beforeunload', e => {
+    if (S.dirty) { e.preventDefault(); e.returnValue = ''; }
+  });
+}
+
+/* ═══ TOAST (timer managed) ═══ */
+let toastTimer = null;
+function showToast(msg, type) {
+  if (toastTimer) clearTimeout(toastTimer);
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + type;
+  requestAnimationFrame(() => el.classList.add('visible'));
+  toastTimer = setTimeout(() => { el.classList.remove('visible'); toastTimer = null; }, 2000);
+}
+
+/* ═══ CANVAS GRAPH ENGINE (with convergence stop + layout cache) ═══ */
+let canvas, ctx, gNodes=[], gEdges=[], gNodeIdx={};
+let gCam={x:0,y:0,zoom:1}, gPhysics=true, gDragging=null, gPanning=false, gPanStart={x:0,y:0};
+let gHover=null, gAnimFrame=null;
+const layoutCache = {};
+
+const EDGE_COLORS = { supports:'#22C55E', contradicts:'#EF4444', extends:'#3B82F6', abstracts:'#A78BFA', grounds:'#F59E0B', causes:'#F59E0B', 'example-of':'#67E8F9', related:'#64748B', replaces:'#F59E0B', invalidates:'#EF4444' };
+
+function setupGraph() {
+  canvas = document.getElementById('graphCanvas'); ctx = canvas.getContext('2d');
+  resizeCanvas(); window.addEventListener('resize', resizeCanvas);
+  canvas.addEventListener('mousedown', gDown);
+  canvas.addEventListener('mousemove', gMove);
+  canvas.addEventListener('mouseup', gUp);
+  canvas.addEventListener('wheel', gWheel, {passive:false});
+}
+
+function resizeCanvas() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio; canvas.height = r.height * devicePixelRatio;
+  canvas.style.width = r.width+'px'; canvas.style.height = r.height+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  if (gNodes.length) gDraw(); // redraw on resize even if physics stopped
+}
+
+function cacheLayout() {
+  if (S.selected && gNodes.length) {
+    layoutCache[S.selected.id] = gNodes.map(n => ({id:n.id, x:n.x, y:n.y}));
+  }
+}
+
+function updateGraph(centerId) {
+  document.getElementById('graphEmpty').style.display = 'none';
+  const visited = new Set([centerId]); let frontier = [centerId];
+  for (let d = 0; d < 2; d++) {
+    const next = [];
+    frontier.forEach(id => {
+      const n = S.noteMap[id]; if (!n) return;
+      (n.links||[]).forEach(l => { if (!visited.has(l.target_id) && S.noteMap[l.target_id]) { visited.add(l.target_id); next.push(l.target_id); } });
+      S.allNotes.forEach(other => { (other.links||[]).forEach(l => { if (l.target_id===id && !visited.has(other.id)) { visited.add(other.id); next.push(other.id); } }); });
+    });
+    frontier = next;
+  }
+
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  gNodes=[]; gNodeIdx={}; gEdges=[];
+  const cached = layoutCache[centerId];
+  const cachedMap = {};
+  if (cached) cached.forEach(c => cachedMap[c.id] = c);
+
+  visited.forEach(id => {
+    const n = S.noteMap[id]; if (!n) return;
+    const abs = n.layer==='abstract', isCenter = id===centerId;
+    const ang = Math.random()*Math.PI*2, dist = isCenter ? 0 : 40+Math.random()*80;
+    let x = W/2+Math.cos(ang)*dist, y = H/2+Math.sin(ang)*dist;
+    if (cachedMap[id]) { x = cachedMap[id].x; y = cachedMap[id].y; }
+    gNodeIdx[id] = gNodes.length;
+    gNodes.push({ id, x, y, vx:0, vy:0, r: isCenter?14:8+Math.min((n.links||[]).length,6),
+      color: abs?'#A78BFA':'#3B82F6', shape: abs?'diamond':'circle',
+      label: trunc(n.title,18), fullTitle: n.title, isCenter });
+  });
+
+  const edgeSet = new Set();
+  visited.forEach(id => { const n = S.noteMap[id]; if (!n) return;
+    (n.links||[]).forEach(l => { if (gNodeIdx[l.target_id]===undefined) return;
+      const key = id+'>'+l.target_id; if (edgeSet.has(key)) return; edgeSet.add(key);
+      gEdges.push({ from:id, to:l.target_id, color:EDGE_COLORS[l.relation_type]||'#64748B', width:Math.max(1,(l.weight||.5)*2) });
+    });
+  });
+
+  gCam = {x:0,y:0,zoom:1}; gPhysics = true;
+  restartAnimation();
+}
+
+function clearGraph() {
+  gNodes=[]; gEdges=[]; gNodeIdx={};
+  if (gAnimFrame) { cancelAnimationFrame(gAnimFrame); gAnimFrame=null; }
+  document.getElementById('graphEmpty').style.display = '';
+  ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
+}
+
+function gSimulate() {
+  if (!gPhysics || gNodes.length===0) return;
+  const N = gNodes.length;
+  for (let i=0;i<N;i++) for (let j=i+1;j<N;j++) {
+    let dx=gNodes[j].x-gNodes[i].x, dy=gNodes[j].y-gNodes[i].y, d=Math.sqrt(dx*dx+dy*dy)||1;
+    let f=Math.min(600/(d*d),4);
+    gNodes[i].vx-=dx/d*f; gNodes[i].vy-=dy/d*f;
+    gNodes[j].vx+=dx/d*f; gNodes[j].vy+=dy/d*f;
+  }
+  gEdges.forEach(e => {
+    const a=gNodes[gNodeIdx[e.from]], b=gNodes[gNodeIdx[e.to]]; if(!a||!b) return;
+    let dx=b.x-a.x, dy=b.y-a.y, d=Math.sqrt(dx*dx+dy*dy)||1, f=(d-80)*.006;
+    a.vx+=dx/d*f; a.vy+=dy/d*f; b.vx-=dx/d*f; b.vy-=dy/d*f;
+  });
+  const cx=canvas.clientWidth/2, cy=canvas.clientHeight/2;
+  let maxV = 0;
+  gNodes.forEach(n => {
+    n.vx+=(cx-n.x)*.0004; n.vy+=(cy-n.y)*.0004;
+    n.vx*=.82; n.vy*=.82;
+    if (gDragging!==n) { n.x+=n.vx; n.y+=n.vy; }
+    maxV = Math.max(maxV, Math.abs(n.vx), Math.abs(n.vy));
+  });
+  if (maxV < 0.1) gPhysics = false;
+}
+
+function gDraw() {
+  const W=canvas.clientWidth, H=canvas.clientHeight;
+  ctx.clearRect(0,0,W,H); ctx.save();
+  ctx.translate(W/2+gCam.x,H/2+gCam.y); ctx.scale(gCam.zoom,gCam.zoom); ctx.translate(-W/2,-H/2);
+  gEdges.forEach(e => {
+    const a=gNodes[gNodeIdx[e.from]], b=gNodes[gNodeIdx[e.to]]; if(!a||!b)return;
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+    ctx.strokeStyle=e.color; ctx.globalAlpha=.4; ctx.lineWidth=e.width; ctx.stroke();
+    const ang=Math.atan2(b.y-a.y,b.x-a.x), ar=b.r+3, ax=b.x-Math.cos(ang)*ar, ay=b.y-Math.sin(ang)*ar;
+    ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(ax-Math.cos(ang-.4)*4,ay-Math.sin(ang-.4)*4); ctx.lineTo(ax-Math.cos(ang+.4)*4,ay-Math.sin(ang+.4)*4);
+    ctx.closePath(); ctx.fillStyle=e.color; ctx.fill();
+  });
+  ctx.globalAlpha=1;
+  gNodes.forEach(n => {
+    const sel = S.selected && S.selected.id===n.id;
+    if (n.shape==='diamond') { ctx.beginPath(); ctx.moveTo(n.x,n.y-n.r); ctx.lineTo(n.x+n.r,n.y); ctx.lineTo(n.x,n.y+n.r); ctx.lineTo(n.x-n.r,n.y); ctx.closePath(); }
+    else { ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2); }
+    ctx.fillStyle=n.color; ctx.fill();
+    if (sel||n.isCenter) { ctx.lineWidth=2.5; ctx.strokeStyle='#F8FAFC'; ctx.stroke(); }
+    else if (gHover===n) { ctx.lineWidth=2; ctx.strokeStyle='#94A3B8'; ctx.stroke(); }
+    ctx.font='10px system-ui, sans-serif'; ctx.fillStyle='rgba(248,250,252,.8)'; ctx.textAlign='center';
+    ctx.fillText(n.label, n.x, n.y+n.r+12);
+  });
+  ctx.restore();
+}
+
+function gTick() {
+  gSimulate(); gDraw();
+  if (gPhysics || gDragging || gPanning) gAnimFrame = requestAnimationFrame(gTick);
+  else gAnimFrame = null;
+}
+
+function restartAnimation() {
+  gPhysics = true;
+  if (!gAnimFrame) gAnimFrame = requestAnimationFrame(gTick);
+}
+
+function gScreenToWorld(sx,sy) { const W=canvas.clientWidth,H=canvas.clientHeight; return {x:(sx-W/2-gCam.x)/gCam.zoom+W/2, y:(sy-H/2-gCam.y)/gCam.zoom+H/2}; }
+function gHitTest(sx,sy) { const p=gScreenToWorld(sx,sy); for(let i=gNodes.length-1;i>=0;i--){ const n=gNodes[i],dx=p.x-n.x,dy=p.y-n.y; if(dx*dx+dy*dy<(n.r+4)*(n.r+4)) return n; } return null; }
+
+function gDown(e) {
+  const r=canvas.getBoundingClientRect(), hit=gHitTest(e.clientX-r.left,e.clientY-r.top);
+  if (hit) { gDragging=hit; canvas.style.cursor='grabbing'; restartAnimation(); }
+  else { gPanning=true; gPanStart={x:e.clientX-gCam.x,y:e.clientY-gCam.y}; canvas.style.cursor='grabbing'; restartAnimation(); }
+}
+function gMove(e) {
+  const r=canvas.getBoundingClientRect(), sx=e.clientX-r.left, sy=e.clientY-r.top;
+  if (gDragging) { const p=gScreenToWorld(sx,sy); gDragging.x=p.x; gDragging.y=p.y; gDragging.vx=0; gDragging.vy=0; return; }
+  if (gPanning) { gCam.x=e.clientX-gPanStart.x; gCam.y=e.clientY-gPanStart.y; if(!gAnimFrame){gDraw();} return; }
+  const hit=gHitTest(sx,sy); gHover=hit; canvas.style.cursor=hit?'pointer':'default';
+  const tip=document.getElementById('tooltip');
+  if (hit) { tip.style.display='block'; tip.style.left=(e.clientX+12)+'px'; tip.style.top=(e.clientY-8)+'px'; tip.innerHTML=`<strong>${esc(hit.fullTitle)}</strong><br><span style="color:var(--text-muted)">${esc(hit.id)}</span>`; }
+  else tip.style.display='none';
+}
+function gUp(e) {
+  if (gDragging) { const r=canvas.getBoundingClientRect(), hit=gHitTest(e.clientX-r.left,e.clientY-r.top);
+    if (hit&&hit===gDragging) { const n=S.noteMap[hit.id]; if(n) selectNote(n.id,n.project_id); }
+    gDragging=null;
+  }
+  gPanning=false; canvas.style.cursor='default';
+}
+function gWheel(e) { e.preventDefault(); gCam.zoom=Math.max(.3,Math.min(4,gCam.zoom*(e.deltaY>0?.9:1.1))); if(!gAnimFrame){gDraw();} }
+
+/* ═══ HELPERS ═══ */
+function esc(s) { if (s == null) return ''; const d=document.createElement('div'); d.textContent=String(s); return d.innerHTML; }
+function trunc(s,n) { return s.length>n ? s.slice(0,n)+'...' : s; }
+
+/* ═══ BOOT ═══ */
+init();
+</script>
+</body>
+</html>
