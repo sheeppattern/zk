@@ -18,6 +18,14 @@ const (
 	RelExtends     = "extends"
 	RelCauses      = "causes"
 	RelExampleOf   = "example-of"
+	RelAbstracts   = "abstracts"
+	RelGrounds     = "grounds"
+)
+
+// Layer constants.
+const (
+	LayerConcrete = "concrete"
+	LayerAbstract = "abstract"
 )
 
 // Note status constants.
@@ -35,6 +43,7 @@ type Note struct {
 	Links     []Link   `yaml:"links"     json:"links"`
 	Metadata  Metadata `yaml:"metadata"  json:"metadata"`
 	ProjectID string   `yaml:"project_id,omitempty" json:"project_id,omitempty"`
+	Layer     string   `yaml:"layer,omitempty"      json:"layer,omitempty"`
 }
 
 // NoteFrontmatter is the YAML-serializable portion of a Note (without Content).
@@ -45,6 +54,7 @@ type NoteFrontmatter struct {
 	Links     []Link   `yaml:"links"     json:"links"`
 	Metadata  Metadata `yaml:"metadata"  json:"metadata"`
 	ProjectID string   `yaml:"project_id,omitempty" json:"project_id,omitempty"`
+	Layer     string   `yaml:"layer,omitempty"      json:"layer,omitempty"`
 }
 
 // Link represents a weighted, typed connection between notes.
@@ -100,6 +110,7 @@ func NewNote(title, content string, tags []string) *Note {
 		Content: content,
 		Tags:    tags,
 		Links:   []Link{},
+		Layer:   LayerConcrete,
 		Metadata: Metadata{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -169,6 +180,8 @@ func ValidRelationTypes() []string {
 		RelExtends,
 		RelCauses,
 		RelExampleOf,
+		RelAbstracts,
+		RelGrounds,
 	}
 	return append(builtIn, customRelationTypes...)
 }

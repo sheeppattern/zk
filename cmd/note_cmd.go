@@ -31,12 +31,19 @@ var noteCreateCmd = &cobra.Command{
 	Short: "Create a new note",
 	Example: `  zk note create --title "Discovery" --content "Found something" --tags "research,important"
   zk note create --title "Idea" --content "..." --project P-XXXXXX
-  zk note create --title "Paper Notes" --template research --project P-XXXXXX`,
+  zk note create --title "Paper Notes" --template research --project P-XXXXXX
+  zk note create --title "Insight" --content "..." --layer abstract`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		title, _ := cmd.Flags().GetString("title")
 		content, _ := cmd.Flags().GetString("content")
 		tags, _ := cmd.Flags().GetStringSlice("tags")
 		templateName, _ := cmd.Flags().GetString("template")
+		layerFlag, _ := cmd.Flags().GetString("layer")
+
+		// Validate layer flag.
+		if layerFlag != model.LayerConcrete && layerFlag != model.LayerAbstract {
+			return fmt.Errorf("invalid layer %q: must be %q or %q", layerFlag, model.LayerConcrete, model.LayerAbstract)
+		}
 
 		storePath := getStorePath(cmd)
 
@@ -89,6 +96,7 @@ var noteCreateCmd = &cobra.Command{
 			}
 
 			note := model.NewNote(title, content, tags)
+			note.Layer = layerFlag
 
 			if tmpl.DefaultStatus != "" {
 				note.Metadata.Status = tmpl.DefaultStatus
@@ -107,6 +115,7 @@ var noteCreateCmd = &cobra.Command{
 		}
 
 		note := model.NewNote(title, content, tags)
+		note.Layer = layerFlag
 
 		if flagProject != "" {
 			note.ProjectID = flagProject
@@ -144,12 +153,25 @@ var noteListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all notes",
 	Example: `  zk note list --project P-XXXXXX
-  zk note list --format md`,
+  zk note list --format md
+  zk note list --layer abstract`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		layerFilter, _ := cmd.Flags().GetString("layer")
+
 		s := store.NewStore(getStorePath(cmd))
 		notes, err := s.ListNotes(flagProject)
 		if err != nil {
 			return fmt.Errorf("list notes: %w", err)
+		}
+
+		if layerFilter != "" {
+			filtered := make([]*model.Note, 0, len(notes))
+			for _, n := range notes {
+				if n.Layer == layerFilter {
+					filtered = append(filtered, n)
+				}
+			}
+			notes = filtered
 		}
 
 		return getFormatter().PrintNotes(notes)
@@ -262,6 +284,7 @@ func init() {
 	noteCreateCmd.Flags().String("content", "", "note content (required)")
 	noteCreateCmd.Flags().StringSlice("tags", nil, "comma-separated tags")
 	noteCreateCmd.Flags().String("template", "", "template name (loads from {store}/templates/{name}.yaml)")
+	noteCreateCmd.Flags().String("layer", model.LayerConcrete, "note layer (concrete, abstract)")
 	_ = noteCreateCmd.MarkFlagRequired("title")
 
 	// noteUpdateCmd flags
@@ -269,6 +292,9 @@ func init() {
 	noteUpdateCmd.Flags().String("content", "", "new content")
 	noteUpdateCmd.Flags().StringSlice("tags", nil, "new tags")
 	noteUpdateCmd.Flags().String("status", "", "new status (active, archived)")
+
+	// noteListCmd flags
+	noteListCmd.Flags().String("layer", "", "filter by layer (concrete, abstract)")
 
 	// noteDeleteCmd flags
 	noteDeleteCmd.Flags().Bool("force", false, "force deletion even if backlinks exist")
