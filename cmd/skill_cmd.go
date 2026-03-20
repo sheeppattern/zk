@@ -272,13 +272,25 @@ zk project get <id>       # Includes note count, link count, last activity
 zk project delete <id>
 ` + bt + `
 
-## Notes
+## Notes (Concrete/Abstract Layers)
+
+Every note belongs to a layer:
+- **concrete** (default): facts, observations, data records
+- **abstract**: patterns, tensions, questions, insights
 
 ` + bt + `bash
-zk note create --title "Title" --content "Body" --tags "t1,t2" --project <id>
+# Concrete notes (facts)
+zk note create --title "Title" --content "Body" --tags "t1,t2" --layer concrete --project <id>
+
+# Abstract notes (insights)
+zk note create --title "Tension: X vs Y" --content "..." --layer abstract --project <id>
+
+# Templates
 zk note create --title "Title" --template research --project <id>
+
 zk note get <noteID> --project <id>
 zk note list --project <id>
+zk note list --layer abstract --project <id>     # Filter by layer
 zk note update <noteID> --title "New" --project <id>
 zk note delete <noteID> --project <id>           # Blocked if backlinks exist
 zk note delete <noteID> --force --project <id>   # Force (moves to trash/)
@@ -301,7 +313,10 @@ zk link list <noteID> --sort-weight                 # Sort by weight desc
 zk link list <noteID> --depth 3 --project <id>     # BFS traversal
 ` + bt + `
 
-Relation types: related (default), supports, contradicts, extends, causes, example-of
+Relation types: related (default), supports, contradicts, extends, causes, example-of, abstracts, grounds
+- abstracts: concrete → abstract ("this fact led to this insight")
+- grounds: abstract → concrete ("this insight is grounded in this fact")
+
 Duplicate links are automatically prevented.
 Cross-project backlinks are included in link list results.
 
@@ -312,6 +327,7 @@ zk search <query> --project <id>
 zk search "Redis" --tags "cache" --relation supports --min-weight 0.5
 zk search "data" --created-after 2026-01-01 --created-before 2026-12-31
 zk search "auth" --sort relevance    # relevance | created | updated
+zk search "tension" --layer abstract --project <id>   # Search only abstract notes
 ` + bt + `
 
 ## Tags
@@ -355,27 +371,63 @@ zk schema relation-types
 - stderr: status, errors, debug info
 - Use --quiet to suppress stderr status messages
 
+## Reflect — Insight Engine
+
+Analyzes concrete notes and suggests missing abstract notes:
+
+` + bt + `bash
+zk reflect --project <id>              # Show insight suggestions
+zk reflect --project <id> --format md  # Markdown report
+zk reflect --project <id> --apply      # Auto-create suggested abstract notes
+` + bt + `
+
+Detects:
+- **Tensions**: contradicts pairs without a synthesizing abstract note
+- **Hubs without abstraction**: concrete notes with 4+ links but no abstract
+- **Orphan notes**: notes with zero connections
+- **Abstraction ratio**: warns if abstract/total ratio is too low
+
+When --apply is used, zk automatically:
+1. Creates abstract notes with suggested titles
+2. Links them to source concrete notes via "abstracts" relation
+3. Tags them with "auto-reflect"
+
 ## Agent Workflows
 
-### 1. Knowledge Accumulation
+### 1. Knowledge Accumulation (Concrete)
 ` + bt + `bash
 zk init
 zk project create "research" --description "Research project"
-zk note create --title "Finding 1" --content "..." --tags "finding" --project P-XXX
-zk note create --title "Finding 2" --content "..." --tags "finding" --project P-XXX
+zk note create --title "Finding 1" --content "..." --tags "finding" --layer concrete --project P-XXX
+zk note create --title "Finding 2" --content "..." --tags "finding" --layer concrete --project P-XXX
 zk link add N-AAA N-BBB --type supports --weight 0.9 --project P-XXX
 ` + bt + `
 
-### 2. Knowledge Exploration
+### 2. Insight Derivation (Concrete → Abstract)
+` + bt + `bash
+# Check what insights are missing
+zk reflect --project P-XXX --format md
+
+# Auto-create abstract notes from analysis
+zk reflect --project P-XXX --apply
+
+# Or manually create abstract notes
+zk note create --title "Growth vs Retention tradeoff" --content "..." --layer abstract --project P-XXX
+zk link add N-CONCRETE N-ABSTRACT --type abstracts --weight 0.8 --project P-XXX
+` + bt + `
+
+### 3. Knowledge Exploration
 ` + bt + `bash
 zk search "keyword" --project P-XXX
+zk search "tension" --layer abstract --project P-XXX    # Browse insights only
 zk link list N-AAA --depth 2 --project P-XXX
 zk note get N-BBB --project P-XXX
 ` + bt + `
 
-### 3. Maintenance
+### 4. Maintenance
 ` + bt + `bash
 zk diagnose --project P-XXX
+zk reflect --project P-XXX           # Check abstraction health
 zk export --project P-XXX --output snapshot.yaml
 ` + bt + `
 
@@ -412,6 +464,16 @@ var domainGuideContent = `# Zettelkasten Domain Guide
 - Keep notes focused and reusable
 - Split complex topics into connected atomic notes
 
+### Concrete/Abstract Layers
+Notes belong to one of two layers:
+- **concrete**: Facts, observations, metrics, specifications, data points
+- **abstract**: Patterns, tensions, questions, insights, strategic decisions
+
+The power of zk comes from the interplay between layers:
+- Concrete notes accumulate raw knowledge
+- Abstract notes emerge when you notice patterns, contradictions, or questions across concrete notes
+- Use ` + "`zk reflect`" + ` to automatically detect where abstract notes are needed
+
 ### Bidirectional Links
 - All links are automatically bidirectional
 - Relation types express "why" the connection exists
@@ -419,29 +481,49 @@ var domainGuideContent = `# Zettelkasten Domain Guide
 
 ## Relation Type Guide
 
-| Type | Meaning | Example |
-|------|---------|---------|
-| related | General relation (default) | Different angles of same topic |
-| supports | Evidence, backing | Evidence supports a claim |
-| contradicts | Contradiction | Conflicting opinions |
-| extends | Extension | Develops an idea further |
-| causes | Causation | Cause-effect relationship |
-| example-of | Instance | Concrete example of a concept |
+| Type | Meaning | Layer Direction | Example |
+|------|---------|-----------------|---------|
+| related | General relation (default) | any → any | Different angles of same topic |
+| supports | Evidence, backing | any → any | Evidence supports a claim |
+| contradicts | Contradiction | any → any | Conflicting opinions or data |
+| extends | Extension | any → any | Develops an idea further |
+| causes | Causation | any → any | Cause-effect relationship |
+| example-of | Instance | any → any | Concrete example of a concept |
+| abstracts | Insight derivation | concrete → abstract | "This fact led to this insight" |
+| grounds | Evidence grounding | abstract → concrete | "This insight is based on this fact" |
+
+### When to use abstracts/grounds
+- After creating several concrete notes, ask: "What pattern or tension do I see?"
+- Create an abstract note for the insight
+- Link concrete → abstract with "abstracts" relation
+- Link abstract → concrete with "grounds" relation
+- This makes the reasoning chain explicit and traversable
 
 ## Weight Guide
 
-| Range | Meaning |
-|-------|---------|
-| 0.8~1.0 | Very strong (core connection) |
-| 0.5~0.7 | Moderate (reference level) |
-| 0.1~0.4 | Weak (indirect connection) |
+| Range | Meaning | When to use |
+|-------|---------|-------------|
+| 0.8~1.0 | Very strong (core connection) | Direct evidence, primary cause, key insight |
+| 0.5~0.7 | Moderate (reference level) | Supporting context, related but not central |
+| 0.1~0.4 | Weak (indirect connection) | Tangential, might be relevant later |
 
 ## Best Practices
 
-1. **Isolate context with projects**: Group related notes in the same project
-2. **Cross-cut with tags**: Use tags for themes that span projects
-3. **Regular diagnostics**: Run ` + "`zk diagnose`" + ` to find broken links
-4. **Backup**: Use ` + "`zk export`" + ` for regular snapshots
-5. **Use specific relation types**: Don't just use "related" — express the actual relationship
-6. **Leverage search filters**: Combine --tags, --relation, --min-weight for precise queries
+1. **Start concrete, derive abstract**: Record facts first, then notice patterns
+2. **Use ` + "`zk reflect`" + ` regularly**: It detects tensions, orphans, and hubs that need abstraction
+3. **Name abstract notes as questions**: "X vs Y — what should we choose?" is more useful than "Analysis of X"
+4. **Isolate context with projects**: Group related notes in the same project
+5. **Cross-cut with tags**: Use tags for themes that span projects
+6. **Run ` + "`zk diagnose`" + ` periodically**: Find broken links and orphan notes
+7. **Backup with ` + "`zk export`" + `**: Regular snapshots prevent data loss
+8. **Use specific relation types**: Don't just use "related" — express the actual relationship
+9. **Leverage search filters**: Combine --tags, --relation, --min-weight, --layer for precise queries
+10. **Track abstraction ratio**: Aim for 20-30% abstract notes; below 10% suggests missing insights
+
+## Anti-Patterns
+
+- **Dumping without linking**: Creating notes without connecting them defeats the purpose
+- **All concrete, no abstract**: Recording facts without deriving insights means no structured thinking
+- **Vague relations**: Using "related" for everything loses the semantic richness
+- **Ignoring tensions**: contradicts links are the most valuable — they reveal where decisions are needed
 `
