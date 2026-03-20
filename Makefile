@@ -2,7 +2,7 @@ VERSION ?= dev
 LDFLAGS = -X github.com/sheeppattern/zk/cmd.Version=$(VERSION)
 BINARY = zk
 
-.PHONY: build test lint clean release-local
+.PHONY: build test lint clean release-local install
 
 build:
 	go build -ldflags="$(LDFLAGS)" -o $(BINARY) .
@@ -12,6 +12,11 @@ test:
 
 lint:
 	golangci-lint run ./...
+
+install: build
+	@mkdir -p $(HOME)/bin
+	cp $(BINARY)$(if $(filter windows,$(shell go env GOOS)),.exe,) $(HOME)/bin/
+	@echo "Installed to $(HOME)/bin/$(BINARY)"
 
 clean:
 	rm -f $(BINARY) $(BINARY).exe

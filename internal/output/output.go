@@ -163,6 +163,9 @@ func (f *Formatter) printNoteMD(note *model.Note) error {
 	fmt.Fprintf(&b, "**Tags**: %s\n", strings.Join(note.Tags, ", "))
 	fmt.Fprintf(&b, "**Project**: %s\n", note.ProjectID)
 	fmt.Fprintf(&b, "**Status**: %s\n", note.Metadata.Status)
+	if note.Metadata.Summary != "" {
+		fmt.Fprintf(&b, "**Summary**: %s\n", note.Metadata.Summary)
+	}
 	fmt.Fprintf(&b, "**Created**: %s\n", note.Metadata.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "\n%s\n", note.Content)
 
@@ -182,11 +185,15 @@ func (f *Formatter) printNoteMD(note *model.Note) error {
 func (f *Formatter) printNotesMD(notes []*model.Note) error {
 	var b strings.Builder
 
-	fmt.Fprintln(&b, "| ID | Title | Tags | Status |")
-	fmt.Fprintln(&b, "|----|-------|------|--------|")
+	fmt.Fprintln(&b, "| ID | Title | Tags | Status | Summary |")
+	fmt.Fprintln(&b, "|----|-------|------|--------|---------|")
 	for _, n := range notes {
 		tags := strings.Join(n.Tags, ", ")
-		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", n.ID, n.Title, tags, n.Metadata.Status)
+		summary := n.Metadata.Summary
+		if len(summary) > 40 {
+			summary = summary[:40] + "..."
+		}
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", n.ID, n.Title, tags, n.Metadata.Status, summary)
 	}
 
 	_, err := fmt.Fprint(os.Stdout, b.String())

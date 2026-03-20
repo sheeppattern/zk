@@ -308,8 +308,10 @@ var linkListCmd = &cobra.Command{
 			return f.PrintJSON(result)
 		case "yaml":
 			return f.PrintYAML(result)
+		case "md":
+			return printLinkListMD(noteID, result.Outgoing, result.Incoming)
 		default:
-			return f.PrintJSON(result)
+			return fmt.Errorf("unsupported format: %s", f.Format)
 		}
 	},
 }
@@ -368,8 +370,10 @@ func linkListBFS(s *store.Store, f *output.Formatter, noteID, typeFilter string,
 		return f.PrintJSON(allLinks)
 	case "yaml":
 		return f.PrintYAML(allLinks)
+	case "md":
+		return printLinkBFSMD(noteID, allLinks)
 	default:
-		return f.PrintJSON(allLinks)
+		return fmt.Errorf("unsupported format: %s", f.Format)
 	}
 }
 
@@ -404,6 +408,67 @@ func removeLink(links []model.Link, targetID string) []model.Link {
 		}
 	}
 	return filtered
+}
+
+// printLinkListMD renders outgoing and incoming links as markdown tables.
+func printLinkListMD(noteID string, outgoing []model.Link, incoming []IncomingLink) error {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "# Links for %s\n\n", noteID)
+
+	fmt.Fprintln(&b, "## Outgoing")
+	if len(outgoing) == 0 {
+		fmt.Fprintln(&b, "\nNo outgoing links.")
+	} else {
+		fmt.Fprintln(&b, "")
+		fmt.Fprintln(&b, "| Target | Type | Weight |")
+		fmt.Fprintln(&b, "|--------|------|--------|")
+		for _, l := range outgoing {
+			fmt.Fprintf(&b, "| %s | %s | %.2f |\n", l.TargetID, l.RelationType, l.Weight)
+		}
+		fmt.Fprintln(&b)
+	}
+
+	fmt.Fprintln(&b, "## Incoming")
+	if len(incoming) == 0 {
+		fmt.Fprintln(&b, "\nNo incoming links.")
+	} else {
+		fmt.Fprintln(&b, "")
+		fmt.Fprintln(&b, "| Source | Project | Type | Weight |")
+		fmt.Fprintln(&b, "|--------|---------|------|--------|")
+		for _, l := range incoming {
+			proj := l.SourceProject
+			if proj == "" {
+				proj = "global"
+			}
+			fmt.Fprintf(&b, "| %s | %s | %s | %.2f |\n", l.SourceNoteID, proj, l.RelationType, l.Weight)
+		}
+		fmt.Fprintln(&b)
+	}
+
+	_, err := fmt.Fprint(os.Stdout, b.String())
+	return err
+}
+
+// printLinkBFSMD renders BFS traversal results as a markdown table.
+func printLinkBFSMD(noteID string, links []LinkWithSource) error {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "# Link Graph for %s\n\n", noteID)
+
+	if len(links) == 0 {
+		fmt.Fprintln(&b, "No links found.")
+	} else {
+		fmt.Fprintln(&b, "| Source | Target | Type | Weight | Depth |")
+		fmt.Fprintln(&b, "|--------|--------|------|--------|-------|")
+		for _, l := range links {
+			fmt.Fprintf(&b, "| %s | %s | %s | %.2f | %d |\n", l.SourceID, l.TargetID, l.RelationType, l.Weight, l.Depth)
+		}
+		fmt.Fprintln(&b)
+	}
+
+	_, err := fmt.Fprint(os.Stdout, b.String())
+	return err
 }
 
 func init() {

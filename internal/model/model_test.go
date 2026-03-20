@@ -90,14 +90,15 @@ func TestRelationTypes(t *testing.T) {
 	customRelationTypes = nil
 
 	types := ValidRelationTypes()
-	if len(types) != 8 {
-		t.Fatalf("ValidRelationTypes() returned %d types; want 8", len(types))
+	if len(types) != 10 {
+		t.Fatalf("ValidRelationTypes() returned %d types; want 10", len(types))
 	}
 
 	expected := []string{
 		RelRelated, RelSupports, RelContradicts,
 		RelExtends, RelCauses, RelExampleOf,
 		RelAbstracts, RelGrounds,
+		RelReplaces, RelInvalidates,
 	}
 	for _, e := range expected {
 		if !IsValidRelationType(e) {
@@ -203,5 +204,37 @@ func TestNewRelationTypes(t *testing.T) {
 	}
 	if !IsValidRelationType(RelGrounds) {
 		t.Fatalf("IsValidRelationType(%q) = false; want true", RelGrounds)
+	}
+}
+
+func TestNewRelationTypesExtended(t *testing.T) {
+	// Reset custom types for a clean test.
+	customRelationTypes = nil
+
+	types := ValidRelationTypes()
+
+	// "replaces" and "invalidates" should be in the built-in list.
+	foundReplaces := false
+	foundInvalidates := false
+	for _, rt := range types {
+		if rt == RelReplaces {
+			foundReplaces = true
+		}
+		if rt == RelInvalidates {
+			foundInvalidates = true
+		}
+	}
+	if !foundReplaces {
+		t.Fatalf("ValidRelationTypes() does not include %q", RelReplaces)
+	}
+	if !foundInvalidates {
+		t.Fatalf("ValidRelationTypes() does not include %q", RelInvalidates)
+	}
+
+	if !IsValidRelationType(RelReplaces) {
+		t.Fatalf("IsValidRelationType(%q) = false; want true", RelReplaces)
+	}
+	if !IsValidRelationType(RelInvalidates) {
+		t.Fatalf("IsValidRelationType(%q) = false; want true", RelInvalidates)
 	}
 }

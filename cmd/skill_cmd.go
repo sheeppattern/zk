@@ -29,7 +29,7 @@ Project files (Cursor, Copilot, Windsurf) require --project-dir.`,
 }
 
 func init() {
-	skillGenerateCmd.Flags().String("agents", "all", "comma-separated agent targets: all, claude, gemini, codex, cursor, copilot, windsurf")
+	skillGenerateCmd.Flags().String("agents", "all", "comma-separated agent targets: all, claude, gemini, codex, agent-skills, cursor, copilot, windsurf")
 	skillGenerateCmd.Flags().String("project-dir", "", "project directory for project-level files (cursor, copilot, windsurf)")
 	skillGenerateCmd.Flags().Bool("global-only", false, "only generate global (user-level) files")
 	skillCmd.AddCommand(skillGenerateCmd)
@@ -48,6 +48,7 @@ func allAgentTargets() []agentTarget {
 		{Name: "claude", Global: true, WriteFn: writeClaudeSkill},
 		{Name: "gemini", Global: true, WriteFn: writeGeminiInstruction},
 		{Name: "codex", Global: true, WriteFn: writeCodexInstruction},
+		{Name: "agent-skills", Global: false, WriteFn: writeAgentSkillsStandard},
 		{Name: "cursor", Global: false, WriteFn: writeCursorRule},
 		{Name: "copilot", Global: false, WriteFn: writeCopilotInstruction},
 		{Name: "windsurf", Global: false, WriteFn: writeWindsurfRule},
@@ -183,6 +184,24 @@ func writeCodexInstruction(home string) (string, error) {
 	return path, nil
 }
 
+// Agent Skills Standard (agentskills.io): {projectDir}/agents/skills/zk/SKILL.md + references/
+func writeAgentSkillsStandard(projectDir string) (string, error) {
+	dir := filepath.Join(projectDir, "agents", "skills", "zk")
+	skillPath := filepath.Join(dir, "SKILL.md")
+
+	content := claudeFrontmatter + zkInstructionContent // same frontmatter as Claude (name + description)
+	if err := writeFile(skillPath, content); err != nil {
+		return "", err
+	}
+
+	domainPath := filepath.Join(dir, "references", "domain-guide.md")
+	if err := writeFile(domainPath, domainGuideContent); err != nil {
+		return "", err
+	}
+
+	return skillPath, nil
+}
+
 // Cursor: {projectDir}/.cursor/rules/zk.mdc
 func writeCursorRule(projectDir string) (string, error) {
 	path := filepath.Join(projectDir, ".cursor", "rules", "zk.mdc")
@@ -244,6 +263,17 @@ var zkInstructionContent = `# Zettelkasten Memory CLI (zk)
 > AI 에이전트가 지식을 구조화하고 연결하는 CLI 도구.
 > A CLI tool for AI agents to structure and connect knowledge.
 
+## When to Use zk
+
+You should **proactively** use zk whenever you:
+- Learn something new during a task (create a concrete note)
+- Notice a pattern, tension, or contradiction (create an abstract note)
+- Make a decision or change your understanding (link with supports/contradicts/replaces/invalidates)
+- Finish a research or analysis task (summarize findings as notes)
+- Start a new session and need context (search/explore existing notes)
+
+**Do not wait to be asked.** If you are thinking about something worth remembering, record it. If two ideas conflict, link them with contradicts. If new data changes an old conclusion, link with invalidates or replaces. The value of zk comes from habitual use, not occasional use.
+
 ## Global Options
 
 ` + bt + `bash
@@ -282,6 +312,9 @@ Every note belongs to a layer:
 # Concrete notes (facts)
 zk note create --title "Title" --content "Body" --tags "t1,t2" --layer concrete --project <id>
 
+# With summary (for quick scanning)
+zk note create --title "Title" --content "Body" --summary "Brief description" --project <id>
+
 # Abstract notes (insights)
 zk note create --title "Tension: X vs Y" --content "..." --layer abstract --project <id>
 
@@ -292,6 +325,7 @@ zk note get <noteID> --project <id>
 zk note list --project <id>
 zk note list --layer abstract --project <id>     # Filter by layer
 zk note update <noteID> --title "New" --project <id>
+zk note update <noteID> --summary "Updated summary" --project <id>
 zk note delete <noteID> --project <id>           # Blocked if backlinks exist
 zk note delete <noteID> --force --project <id>   # Force (moves to trash/)
 zk note move <noteID> <targetProject> --project <sourceProject>
@@ -313,9 +347,11 @@ zk link list <noteID> --sort-weight                 # Sort by weight desc
 zk link list <noteID> --depth 3 --project <id>     # BFS traversal
 ` + bt + `
 
-Relation types: related (default), supports, contradicts, extends, causes, example-of, abstracts, grounds
+Relation types: related (default), supports, contradicts, extends, causes, example-of, abstracts, grounds, replaces, invalidates
 - abstracts: concrete → abstract ("this fact led to this insight")
 - grounds: abstract → concrete ("this insight is grounded in this fact")
+- replaces: new note supersedes an older one
+- invalidates: data disproves a hypothesis
 
 Duplicate links are automatically prevented.
 Cross-project backlinks are included in link list results.
@@ -392,6 +428,28 @@ When --apply is used, zk automatically:
 2. Links them to source concrete notes via "abstracts" relation
 3. Tags them with "auto-reflect"
 
+## Graph Visualization
+
+` + bt + `bash
+zk graph --project <id>                              # Mermaid graph (default)
+zk graph --project <id> --format-graph dot            # DOT format
+zk graph --project <id> --layer abstract              # Abstract notes only
+zk graph --project <id> --type contradicts            # Only contradiction edges
+` + bt + `
+
+Outputs to stdout. Pipe to file: ` + "`zk graph --project P-XXX > graph.mmd`" + `
+
+## Explore — Interactive Navigation
+
+` + bt + `bash
+zk explore <noteID> --project <id>                    # Show connections
+zk explore <noteID> --project <id> --depth 2          # Include neighbors' neighbors
+zk explore <noteID> --project <id> --include-content  # Include note body
+zk explore <noteID> --project <id> --format md        # Human-readable with navigation hints
+` + bt + `
+
+Use explore to navigate the knowledge graph step by step. The JSON output includes outgoing links, incoming backlinks, and neighbor nodes for deeper traversal.
+
 ## Agent Workflows
 
 ### 1. Knowledge Accumulation (Concrete)
@@ -424,7 +482,14 @@ zk link list N-AAA --depth 2 --project P-XXX
 zk note get N-BBB --project P-XXX
 ` + bt + `
 
-### 4. Maintenance
+### 4. Knowledge Navigation
+` + bt + `bash
+zk graph --project P-XXX > knowledge-map.mmd          # Generate visual map
+zk explore N-HUB --project P-XXX --depth 2             # Start from hub note
+zk explore N-NEXT --project P-XXX --include-content    # Dive into connected note
+` + bt + `
+
+### 5. Maintenance
 ` + bt + `bash
 zk diagnose --project P-XXX
 zk reflect --project P-XXX           # Check abstraction health
@@ -446,6 +511,7 @@ zk export --project P-XXX --output snapshot.yaml
 
 ## Key Notes
 
+- Note metadata supports an optional ` + "`summary`" + ` field for quick scanning
 - Note files use YAML frontmatter + Markdown body format
 - Links are bidirectional (add creates both source→target and target→source)
 - Without --project, notes go to global scope
@@ -491,6 +557,8 @@ The power of zk comes from the interplay between layers:
 | example-of | Instance | any → any | Concrete example of a concept |
 | abstracts | Insight derivation | concrete → abstract | "This fact led to this insight" |
 | grounds | Evidence grounding | abstract → concrete | "This insight is based on this fact" |
+| replaces | Supersession | any → any | New note supersedes an older one |
+| invalidates | Disproof | any → any | Data disproves a hypothesis |
 
 ### When to use abstracts/grounds
 - After creating several concrete notes, ask: "What pattern or tension do I see?"
@@ -519,11 +587,24 @@ The power of zk comes from the interplay between layers:
 8. **Use specific relation types**: Don't just use "related" — express the actual relationship
 9. **Leverage search filters**: Combine --tags, --relation, --min-weight, --layer for precise queries
 10. **Track abstraction ratio**: Aim for 20-30% abstract notes; below 10% suggests missing insights
+11. **Write summaries for long notes**: Notes over 500 chars benefit from a summary — agents scan summaries before reading full content
+
+## Proactive Usage Mindset
+
+zk is not a passive archive — it is an active thinking tool. As an AI agent, you should:
+- **Record as you go**: When you discover a fact, make a decision, or change your mind — write it down immediately
+- **Link aggressively**: Every note should connect to at least one other note. If it doesn't, ask why it exists in isolation
+- **Challenge yourself**: After creating 3+ concrete notes, run ` + "`zk reflect`" + ` and act on the suggestions
+- **Use contradicts liberally**: Disagreement and tension are the most productive signals — they show where thinking is needed
+- **Update, don't append**: If a note's conclusion changes, create a new note and link with replaces/invalidates rather than making the old note longer
+- **Summarize proactively**: When creating or updating a note with >500 chars, add a --summary so future sessions can scan quickly
 
 ## Anti-Patterns
 
+- **Waiting to be told**: Don't wait for the user to say "record this" — if it's worth thinking about, it's worth noting
 - **Dumping without linking**: Creating notes without connecting them defeats the purpose
 - **All concrete, no abstract**: Recording facts without deriving insights means no structured thinking
 - **Vague relations**: Using "related" for everything loses the semantic richness
 - **Ignoring tensions**: contradicts links are the most valuable — they reveal where decisions are needed
+- **Appending endlessly**: Growing a single note instead of splitting into hypothesis → evidence → conclusion
 `

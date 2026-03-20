@@ -245,7 +245,19 @@ func buildReflectReport(notes []*model.Note) *ReflectReport {
 		}
 	}
 
-	// 4. Calculate stats.
+	// 4. Detect bloated notes: concrete notes with content > 1000 characters.
+	for _, n := range concreteNotes {
+		if len(n.Content) > 1000 {
+			report.Insights = append(report.Insights, Insight{
+				Type:           "bloated_note",
+				SourceNotes:    []string{n.ID},
+				Suggestion:     fmt.Sprintf("%s(%s)이 %d자로 비대합니다 — 가설/검증/결론 노트로 분리를 고려하세요", n.ID, n.Title, len(n.Content)),
+				SuggestedTitle: "",
+			})
+		}
+	}
+
+	// 5. Calculate stats.
 	concreteCount := len(concreteNotes)
 	abstractCount := len(abstractNotes)
 	total := concreteCount + abstractCount
@@ -313,7 +325,17 @@ func printReflectMD(report *ReflectReport) {
 		fmt.Fprintf(&b, "\n")
 	}
 
-	if len(tensions) == 0 && len(hubs) == 0 && len(orphans) == 0 {
+	bloated := filterInsights(report.Insights, "bloated_note")
+
+	if len(bloated) > 0 {
+		fmt.Fprintf(&b, "### Bloated Notes\n\n")
+		for _, ins := range bloated {
+			fmt.Fprintf(&b, "- [%s] %s\n", strings.Join(ins.SourceNotes, ", "), ins.Suggestion)
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
+	if len(tensions) == 0 && len(hubs) == 0 && len(orphans) == 0 && len(bloated) == 0 {
 		fmt.Fprintf(&b, "No insights found. Notes are well-structured.\n")
 	}
 

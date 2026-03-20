@@ -20,6 +20,8 @@ const (
 	RelExampleOf   = "example-of"
 	RelAbstracts   = "abstracts"
 	RelGrounds     = "grounds"
+	RelReplaces    = "replaces"     // new note supersedes old one
+	RelInvalidates = "invalidates"  // data disproves a hypothesis
 )
 
 // Layer constants.
@@ -70,6 +72,7 @@ type Metadata struct {
 	UpdatedAt time.Time `yaml:"updated_at" json:"updated_at"`
 	Source    string    `yaml:"source"     json:"source"`
 	Status   string    `yaml:"status"     json:"status"`
+	Summary  string    `yaml:"summary,omitempty" json:"summary,omitempty"`
 }
 
 // Project groups related notes together.
@@ -182,6 +185,8 @@ func ValidRelationTypes() []string {
 		RelExampleOf,
 		RelAbstracts,
 		RelGrounds,
+		RelReplaces,
+		RelInvalidates,
 	}
 	return append(builtIn, customRelationTypes...)
 }

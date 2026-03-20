@@ -39,6 +39,7 @@ var noteCreateCmd = &cobra.Command{
 		tags, _ := cmd.Flags().GetStringSlice("tags")
 		templateName, _ := cmd.Flags().GetString("template")
 		layerFlag, _ := cmd.Flags().GetString("layer")
+		summary, _ := cmd.Flags().GetString("summary")
 
 		// Validate layer flag.
 		if layerFlag != model.LayerConcrete && layerFlag != model.LayerAbstract {
@@ -98,6 +99,10 @@ var noteCreateCmd = &cobra.Command{
 			note := model.NewNote(title, content, tags)
 			note.Layer = layerFlag
 
+			if summary != "" {
+				note.Metadata.Summary = summary
+			}
+
 			if tmpl.DefaultStatus != "" {
 				note.Metadata.Status = tmpl.DefaultStatus
 			}
@@ -116,6 +121,10 @@ var noteCreateCmd = &cobra.Command{
 
 		note := model.NewNote(title, content, tags)
 		note.Layer = layerFlag
+
+		if summary != "" {
+			note.Metadata.Summary = summary
+		}
 
 		if flagProject != "" {
 			note.ProjectID = flagProject
@@ -205,6 +214,9 @@ var noteUpdateCmd = &cobra.Command{
 		if cmd.Flags().Changed("status") {
 			note.Metadata.Status, _ = cmd.Flags().GetString("status")
 		}
+		if cmd.Flags().Changed("summary") {
+			note.Metadata.Summary, _ = cmd.Flags().GetString("summary")
+		}
 
 		if err := s.UpdateNote(note); err != nil {
 			return fmt.Errorf("update note: %w", err)
@@ -285,6 +297,7 @@ func init() {
 	noteCreateCmd.Flags().StringSlice("tags", nil, "comma-separated tags")
 	noteCreateCmd.Flags().String("template", "", "template name (loads from {store}/templates/{name}.yaml)")
 	noteCreateCmd.Flags().String("layer", model.LayerConcrete, "note layer (concrete, abstract)")
+	noteCreateCmd.Flags().String("summary", "", "brief summary for quick scanning")
 	_ = noteCreateCmd.MarkFlagRequired("title")
 
 	// noteUpdateCmd flags
@@ -292,6 +305,7 @@ func init() {
 	noteUpdateCmd.Flags().String("content", "", "new content")
 	noteUpdateCmd.Flags().StringSlice("tags", nil, "new tags")
 	noteUpdateCmd.Flags().String("status", "", "new status (active, archived)")
+	noteUpdateCmd.Flags().String("summary", "", "brief summary for quick scanning")
 
 	// noteListCmd flags
 	noteListCmd.Flags().String("layer", "", "filter by layer (concrete, abstract)")
