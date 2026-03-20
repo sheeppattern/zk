@@ -16,8 +16,8 @@ go test ./internal/model/ -v
 go test ./internal/store/ -v
 go test ./cmd/ -v -count=1    # integration tests (builds binary)
 
-# Build with version
-go build -ldflags "-X github.com/sheeppattern/zk/cmd.Version=0.1.0" -o zk.exe .
+# Build with version + skill version (git hash)
+go build -ldflags "-X github.com/sheeppattern/zk/cmd.Version=0.1.0 -X github.com/sheeppattern/zk/cmd.SkillVersion=$(git rev-parse --short HEAD)" -o zk.exe .
 ```
 
 ## Skill Content Sync Policy

@@ -114,11 +114,13 @@ var noteCreateCmd = &cobra.Command{
 
 			s := store.NewStore(storePath)
 
-			// Resolve author: --author flag > config default_author > empty.
+			// Resolve author: --author flag > config default_author > "user".
 			tmplAuthor := authorFlag
 			if tmplAuthor == "" {
-				if cfg, err := s.LoadConfig(); err == nil {
+				if cfg, err := s.LoadConfig(); err == nil && cfg.DefaultAuthor != "" {
 					tmplAuthor = cfg.DefaultAuthor
+				} else {
+					tmplAuthor = "user"
 				}
 			}
 			note.Metadata.Author = tmplAuthor
@@ -143,11 +145,13 @@ var noteCreateCmd = &cobra.Command{
 
 		s := store.NewStore(storePath)
 
-		// Resolve author: --author flag > config default_author > empty.
+		// Resolve author: --author flag > config default_author > "user".
 		author := authorFlag
 		if author == "" {
-			if cfg, err := s.LoadConfig(); err == nil {
+			if cfg, err := s.LoadConfig(); err == nil && cfg.DefaultAuthor != "" {
 				author = cfg.DefaultAuthor
+			} else {
+				author = "user"
 			}
 		}
 		note.Metadata.Author = author

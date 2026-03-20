@@ -140,13 +140,51 @@ func WriteGlobalAgentFiles() error {
 	return nil
 }
 
+// AutoUpdateSkillsIfNeeded checks if on-disk skill files are older than the
+// binary's built-in version and regenerates them silently.
+func AutoUpdateSkillsIfNeeded() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+
+	// Check Claude skill file as the canonical version indicator.
+	skillPath := filepath.Join(home, ".claude", "skills", "zk", "SKILL.md")
+	diskVersion := readDiskSkillVersion(skillPath)
+	if diskVersion == SkillVersion {
+		return
+	}
+
+	// Skill files are stale or missing — regenerate silently.
+	_ = WriteGlobalAgentFiles()
+	debugf("auto-updated skill files: %s → %s", diskVersion, SkillVersion)
+}
+
+// readDiskSkillVersion extracts the version from the first line of a skill file.
+// Expected format: <!-- zk-skill-version: 0.4.0 -->
+func readDiskSkillVersion(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	firstLine := strings.SplitN(string(data), "\n", 2)[0]
+	prefix := "<!-- zk-skill-version: "
+	suffix := " -->"
+	if strings.HasPrefix(firstLine, prefix) && strings.HasSuffix(firstLine, suffix) {
+		return firstLine[len(prefix) : len(firstLine)-len(suffix)]
+	}
+	return ""
+}
+
 // --- Agent-specific writers ---
 
 func writeFile(path string, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(content), 0o644)
+	// Prepend version tag so auto-update can detect staleness.
+	versioned := SkillVersionTag() + content
+	return os.WriteFile(path, []byte(versioned), 0o644)
 }
 
 // Claude Code: ~/.claude/skills/zk/SKILL.md + references/domain-guide.md
@@ -262,6 +300,19 @@ trigger: always_on
 
 `
 
+// SkillVersion is set at build time via -ldflags, e.g.:
+//
+//	go build -ldflags "-X github.com/sheeppattern/zk/cmd.SkillVersion=$(git rev-parse --short HEAD)"
+//
+// PersistentPreRun compares this with the version embedded in on-disk skill files
+// and auto-regenerates when the binary is newer. Falls back to "dev" during development.
+var SkillVersion = "dev"
+
+// SkillVersionTag returns the HTML comment used to embed version in skill files.
+func SkillVersionTag() string {
+	return fmt.Sprintf("<!-- zk-skill-version: %s -->\n", SkillVersion)
+}
+
 // bt is a shorthand for triple backticks to use inside raw string constants.
 const bt = "```"
 
@@ -300,6 +351,7 @@ zk init --path /custom               # Custom path
 zk config show                       # Show current config
 zk config set default_project P-XXX  # Set default project
 zk config set default_format yaml    # Set default output format
+zk config set default_author claude  # Set default note author
 ` + bt + `
 
 ## Projects
@@ -338,7 +390,26 @@ zk note update <noteID> --summary "Updated summary" --project <id>
 zk note delete <noteID> --project <id>           # Blocked if backlinks exist
 zk note delete <noteID> --force --project <id>   # Force (moves to trash/)
 zk note move <noteID> <targetProject> --project <sourceProject>
+
+# Author tracking
+zk note create --title "Title" --content "..." --author claude --project <id>
+zk note update <noteID> --author gemini --project <id>
 ` + bt + `
+
+## Quick Note
+
+Minimal note creation from a single text argument — no flags required:
+
+` + bt + `bash
+zk quicknote "My quick thought here"
+zk quicknote "Observation about X" --project <id>
+zk quicknote "Found a pattern" --author claude --project <id>
+` + bt + `
+
+- Title: auto-derived (first 50 chars, truncated at word boundary)
+- Content: full input text
+- Layer: concrete (default)
+- Author: --author flag → config default_author → empty
 
 ## Links (Relation Type + Weight)
 
@@ -373,6 +444,7 @@ zk search "Redis" --tags "cache" --relation supports --min-weight 0.5
 zk search "data" --created-after 2026-01-01 --created-before 2026-12-31
 zk search "auth" --sort relevance    # relevance | created | updated
 zk search "tension" --layer abstract --project <id>   # Search only abstract notes
+zk search "pattern" --author claude --project <id>   # Filter by author
 ` + bt + `
 
 ## Tags
@@ -424,6 +496,7 @@ Analyzes concrete notes and suggests missing abstract notes:
 zk reflect --project <id>              # Show insight suggestions
 zk reflect --project <id> --format md  # Markdown report
 zk reflect --project <id> --apply      # Auto-create suggested abstract notes
+zk reflect --project <id> --suggest-links  # Suggest missing links between similar notes
 ` + bt + `
 
 Detects:
@@ -431,6 +504,7 @@ Detects:
 - **Hubs without abstraction**: concrete notes with 4+ links but no abstract
 - **Orphan notes**: notes with zero connections
 - **Abstraction ratio**: warns if abstract/total ratio is too low
+- **Suggested links** (--suggest-links): notes with high content similarity but no existing link, using character trigram Jaccard similarity
 
 When --apply is used, zk automatically:
 1. Creates abstract notes with suggested titles
@@ -520,7 +594,8 @@ zk export --project P-XXX --output snapshot.yaml
 
 ## Key Notes
 
-- Note metadata supports an optional ` + "`summary`" + ` field for quick scanning
+- Note metadata supports optional ` + "`summary`" + ` and ` + "`author`" + ` fields
+- Use ` + "`zk quicknote`" + ` for fast capture without specifying title/layer/tags
 - Note files use YAML frontmatter + Markdown body format
 - Links are bidirectional (add creates both source→target and target→source)
 - Without --project, notes go to global scope
@@ -607,6 +682,9 @@ zk is not a passive archive — it is an active thinking tool. As an AI agent, y
 - **Use contradicts liberally**: Disagreement and tension are the most productive signals — they show where thinking is needed
 - **Update, don't append**: If a note's conclusion changes, create a new note and link with replaces/invalidates rather than making the old note longer
 - **Summarize proactively**: When creating or updating a note with >500 chars, add a --summary so future sessions can scan quickly
+- **Use quicknote for fast capture**: When the thought is more important than the structure, use ` + "`zk quicknote`" + ` and classify later
+- **Set your author**: Run ` + "`zk config set default_author <name>`" + ` so every note tracks who wrote it
+- **Discover hidden links**: Run ` + "`zk reflect --suggest-links`" + ` periodically to find similar notes that aren't connected yet
 
 ## Anti-Patterns
 

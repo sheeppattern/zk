@@ -25,6 +25,9 @@ var rootCmd = &cobra.Command{
 	Short: "Zettelkasten memory CLI for AI agents",
 	Long:  "A Zettelkasten-style memory system designed for AI agents to store, link, and retrieve knowledge notes.",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Auto-update skill files if the binary is newer than on-disk versions.
+		AutoUpdateSkillsIfNeeded()
+
 		// Apply default project from config if --project not explicitly set.
 		if flagProject == "" {
 			storePath := getStorePathSilent(cmd)

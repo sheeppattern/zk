@@ -33,11 +33,13 @@ var quicknoteCmd = &cobra.Command{
 		storePath := getStorePath(cmd)
 		s := store.NewStore(storePath)
 
-		// Resolve author: --author flag > config default_author > empty.
+		// Resolve author: --author flag > config default_author > "user".
 		author := authorFlag
 		if author == "" {
-			if cfg, err := s.LoadConfig(); err == nil {
+			if cfg, err := s.LoadConfig(); err == nil && cfg.DefaultAuthor != "" {
 				author = cfg.DefaultAuthor
+			} else {
+				author = "user"
 			}
 		}
 
