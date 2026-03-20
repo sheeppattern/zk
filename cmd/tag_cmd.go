@@ -127,7 +127,7 @@ var tagReplaceCmd = &cobra.Command{
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "Replaced tag %q with %q in %d note(s)\n", oldTag, newTag, affected)
+		statusf("Replaced tag %q with %q in %d note(s)", oldTag, newTag, affected)
 		return nil
 	},
 }
@@ -209,7 +209,7 @@ var tagBatchAddCmd = &cobra.Command{
 			affected++
 		}
 
-		fmt.Fprintf(os.Stderr, "Added tag %q to %d note(s)\n", tag, affected)
+		statusf("Added tag %q to %d note(s)", tag, affected)
 		return nil
 	},
 }

@@ -28,9 +28,10 @@ type DiagnosticItem struct {
 
 // DiagnosticSummary provides an overview of the diagnosis.
 type DiagnosticSummary struct {
-	ErrorCount   int    `json:"error_count" yaml:"error_count"`
-	WarningCount int    `json:"warning_count" yaml:"warning_count"`
-	HealthScore  string `json:"health_score" yaml:"health_score"`
+	ErrorCount     int    `json:"error_count" yaml:"error_count"`
+	WarningCount   int    `json:"warning_count" yaml:"warning_count"`
+	CorruptedCount int    `json:"corrupted_count" yaml:"corrupted_count"`
+	HealthScore    string `json:"health_score" yaml:"health_score"`
 }
 
 var diagnoseCmd = &cobra.Command{
@@ -48,12 +49,23 @@ func runDiagnose(cmd *cobra.Command, args []string) error {
 	s := store.NewStore(getStorePath(cmd))
 	f := getFormatter()
 
-	notes, err := s.ListNotes(flagProject)
-	if err != nil {
-		return fmt.Errorf("load notes: %w", err)
-	}
+	notes, noteErrors := s.ListNotesPartial(flagProject)
 
 	report := buildDiagnosticReport(notes)
+
+	// Add corrupted file errors from partial listing.
+	for _, ne := range noteErrors {
+		report.Errors = append(report.Errors, DiagnosticItem{
+			Severity: "error",
+			NoteID:   "",
+			Message:  fmt.Sprintf("corrupted file %s: %v", ne.FilePath, ne.Err),
+		})
+	}
+	report.Summary.CorruptedCount = len(noteErrors)
+	report.Summary.ErrorCount = len(report.Errors)
+	if report.Summary.ErrorCount > 0 {
+		report.Summary.HealthScore = "issues"
+	}
 
 	switch f.Format {
 	case "json":

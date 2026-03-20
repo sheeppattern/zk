@@ -34,16 +34,8 @@ func init() {
 	rootCmd.AddCommand(skillCmd)
 }
 
-func runSkillGenerate(cmd *cobra.Command, args []string) error {
-	outDir := skillOutputDir
-	if strings.HasPrefix(outDir, "~") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("cannot determine home directory: %w", err)
-		}
-		outDir = filepath.Join(home, outDir[1:])
-	}
-
+// WriteSkillFiles creates the skill directory and writes SKILL.md and references/domain-guide.md.
+func WriteSkillFiles(outDir string) error {
 	// 1. Create output directory
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
@@ -67,10 +59,27 @@ func runSkillGenerate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write domain-guide.md: %w", err)
 	}
 
-	// 5. Print success to stderr
-	fmt.Fprintln(os.Stderr, "skill files generated successfully:")
-	fmt.Fprintf(os.Stderr, "  %s\n", skillPath)
-	fmt.Fprintf(os.Stderr, "  %s\n", domainPath)
+	return nil
+}
+
+func runSkillGenerate(cmd *cobra.Command, args []string) error {
+	outDir := skillOutputDir
+	if strings.HasPrefix(outDir, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("cannot determine home directory: %w", err)
+		}
+		outDir = filepath.Join(home, outDir[1:])
+	}
+
+	if err := WriteSkillFiles(outDir); err != nil {
+		return err
+	}
+
+	// Print success to stderr
+	statusf("skill files generated successfully:")
+	statusf("  %s", filepath.Join(outDir, "SKILL.md"))
+	statusf("  %s", filepath.Join(outDir, "references", "domain-guide.md"))
 
 	return nil
 }

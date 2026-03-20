@@ -3,10 +3,12 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/zk/internal/output"
 	"github.com/sheeppattern/zk/internal/store"
 )
 
@@ -14,6 +16,25 @@ var linkCmd = &cobra.Command{
 	Use:   "link",
 	Short: "Manage links between notes",
 	Long:  "Commands for adding, removing, and listing links between Zettelkasten notes.",
+}
+
+// hasLink checks whether a link with the given targetID and relationType already exists.
+func hasLink(links []model.Link, targetID, relationType string) bool {
+	for _, l := range links {
+		if l.TargetID == targetID && l.RelationType == relationType {
+			return true
+		}
+	}
+	return false
+}
+
+// LinkWithSource represents a link discovered during BFS traversal.
+type LinkWithSource struct {
+	SourceID     string  `json:"source_id" yaml:"source_id"`
+	TargetID     string  `json:"target_id" yaml:"target_id"`
+	RelationType string  `json:"relation_type" yaml:"relation_type"`
+	Weight       float64 `json:"weight" yaml:"weight"`
+	Depth        int     `json:"depth" yaml:"depth"`
 }
 
 var linkAddCmd = &cobra.Command{
@@ -59,6 +80,12 @@ var linkAddCmd = &cobra.Command{
 			return fmt.Errorf("load target note: %w", err)
 		}
 
+		// Duplicate link prevention: check before adding forward link.
+		if hasLink(sourceNote.Links, targetID, relType) {
+			statusf("link %s → %s (type: %s) already exists, skipping", sourceID, targetID, relType)
+			return nil
+		}
+
 		// Add forward link on source note.
 		sourceNote.Links = append(sourceNote.Links, model.Link{
 			TargetID:     targetID,
@@ -69,21 +96,26 @@ var linkAddCmd = &cobra.Command{
 			return fmt.Errorf("save source note: %w", err)
 		}
 
-		// Add reverse link on target note.
-		targetNote.Links = append(targetNote.Links, model.Link{
-			TargetID:     sourceID,
-			RelationType: relType,
-			Weight:       weight,
-		})
-		if err := s.UpdateNote(targetNote); err != nil {
-			return fmt.Errorf("save target note: %w", err)
+		// Duplicate link prevention: check before adding reverse link.
+		if hasLink(targetNote.Links, sourceID, relType) {
+			statusf("reverse link %s → %s (type: %s) already exists, skipping reverse", targetID, sourceID, relType)
+		} else {
+			// Add reverse link on target note.
+			targetNote.Links = append(targetNote.Links, model.Link{
+				TargetID:     sourceID,
+				RelationType: relType,
+				Weight:       weight,
+			})
+			if err := s.UpdateNote(targetNote); err != nil {
+				return fmt.Errorf("save target note: %w", err)
+			}
 		}
 
 		if sourceProject != targetProject {
-			fmt.Fprintf(os.Stderr, "linked %s(%s) → %s(%s) (type: %s, weight: %.2f)\n",
+			statusf("linked %s(%s) → %s(%s) (type: %s, weight: %.2f)",
 				sourceID, sourceProject, targetID, targetProject, relType, weight)
 		} else {
-			fmt.Fprintf(os.Stderr, "linked %s → %s (type: %s, weight: %.2f)\n",
+			statusf("linked %s → %s (type: %s, weight: %.2f)",
 				sourceID, targetID, relType, weight)
 		}
 		return nil
@@ -121,7 +153,7 @@ var linkRemoveCmd = &cobra.Command{
 			return fmt.Errorf("save target note: %w", err)
 		}
 
-		fmt.Fprintf(os.Stderr, "removed link %s → %s\n", sourceID, targetID)
+		statusf("removed link %s → %s", sourceID, targetID)
 		return nil
 	},
 }
@@ -133,9 +165,18 @@ var linkListCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		noteID := args[0]
 
+		typeFilter, _ := cmd.Flags().GetString("type")
+		sortWeight, _ := cmd.Flags().GetBool("sort-weight")
+		depth, _ := cmd.Flags().GetInt("depth")
+
 		storePath := getStorePath(cmd)
 		s := store.NewStore(storePath)
 		f := getFormatter()
+
+		// BFS traversal for depth > 1.
+		if depth > 1 {
+			return linkListBFS(s, f, noteID, typeFilter, sortWeight, depth)
+		}
 
 		note, err := s.GetNote(flagProject, noteID)
 		if err != nil {
@@ -166,6 +207,22 @@ var linkListCmd = &cobra.Command{
 			}
 		}
 
+		// Filter by --type if set.
+		if typeFilter != "" {
+			outgoing = filterLinksByType(outgoing, typeFilter)
+			incoming = filterLinksByType(incoming, typeFilter)
+		}
+
+		// Sort by weight descending if --sort-weight is set.
+		if sortWeight {
+			sort.Slice(outgoing, func(i, j int) bool {
+				return outgoing[i].Weight > outgoing[j].Weight
+			})
+			sort.Slice(incoming, func(i, j int) bool {
+				return incoming[i].Weight > incoming[j].Weight
+			})
+		}
+
 		result := struct {
 			Outgoing []model.Link `json:"outgoing" yaml:"outgoing"`
 			Incoming []model.Link `json:"incoming" yaml:"incoming"`
@@ -192,6 +249,76 @@ var linkListCmd = &cobra.Command{
 	},
 }
 
+// linkListBFS performs a breadth-first traversal of outgoing links up to the given depth.
+func linkListBFS(s *store.Store, f *output.Formatter, noteID, typeFilter string, sortWeight bool, maxDepth int) error {
+	visited := map[string]bool{noteID: true}
+	queue := []string{noteID}
+	var allLinks []LinkWithSource
+	cache := map[string]*model.Note{}
+
+	for currentDepth := 1; currentDepth <= maxDepth && len(queue) > 0; currentDepth++ {
+		var nextQueue []string
+		for _, id := range queue {
+			note, ok := cache[id]
+			if !ok {
+				var err error
+				note, err = s.GetNote(flagProject, id)
+				if err != nil {
+					continue // skip notes that can't be loaded
+				}
+				cache[id] = note
+			}
+			for _, l := range note.Links {
+				if typeFilter != "" && !strings.EqualFold(l.RelationType, typeFilter) {
+					continue
+				}
+				allLinks = append(allLinks, LinkWithSource{
+					SourceID:     id,
+					TargetID:     l.TargetID,
+					RelationType: l.RelationType,
+					Weight:       l.Weight,
+					Depth:        currentDepth,
+				})
+				if !visited[l.TargetID] {
+					visited[l.TargetID] = true
+					nextQueue = append(nextQueue, l.TargetID)
+				}
+			}
+		}
+		queue = nextQueue
+	}
+
+	if sortWeight {
+		sort.Slice(allLinks, func(i, j int) bool {
+			return allLinks[i].Weight > allLinks[j].Weight
+		})
+	}
+
+	if allLinks == nil {
+		allLinks = []LinkWithSource{}
+	}
+
+	switch f.Format {
+	case "json":
+		return f.PrintJSON(allLinks)
+	case "yaml":
+		return f.PrintYAML(allLinks)
+	default:
+		return f.PrintJSON(allLinks)
+	}
+}
+
+// filterLinksByType returns only links matching the given relation type (case-insensitive).
+func filterLinksByType(links []model.Link, relType string) []model.Link {
+	var filtered []model.Link
+	for _, l := range links {
+		if strings.EqualFold(l.RelationType, relType) {
+			filtered = append(filtered, l)
+		}
+	}
+	return filtered
+}
+
 // removeLink filters out all links whose TargetID matches the given id.
 func removeLink(links []model.Link, targetID string) []model.Link {
 	filtered := make([]model.Link, 0, len(links))
@@ -207,6 +334,10 @@ func init() {
 	linkAddCmd.Flags().String("type", "related", "relation type (e.g. related, supports, contradicts, extends, causes, example-of)")
 	linkAddCmd.Flags().Float64("weight", 0.5, "link weight between 0.0 and 1.0")
 	linkAddCmd.Flags().String("target-project", "", "project of the target note (for cross-project links)")
+
+	linkListCmd.Flags().String("type", "", "filter links by relation type")
+	linkListCmd.Flags().Bool("sort-weight", false, "sort links by weight descending")
+	linkListCmd.Flags().Int("depth", 1, "BFS traversal depth for outgoing links")
 
 	linkCmd.AddCommand(linkAddCmd)
 	linkCmd.AddCommand(linkRemoveCmd)

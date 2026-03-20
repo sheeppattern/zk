@@ -130,7 +130,7 @@ var exportCmd = &cobra.Command{
 			if err := os.WriteFile(outputPath, out, 0644); err != nil {
 				return fmt.Errorf("write output file: %w", err)
 			}
-			fmt.Fprintf(os.Stderr, "exported %d notes to %s\n", len(notes), outputPath)
+			statusf("exported %d notes to %s", len(notes), outputPath)
 		} else {
 			fmt.Fprintln(os.Stdout, string(out))
 		}
@@ -222,7 +222,7 @@ var importCmd = &cobra.Command{
 			imported++
 		}
 
-		fmt.Fprintf(os.Stderr, "imported %d notes, skipped %d, overwritten %d\n", imported, skipped, overwritten)
+		statusf("imported %d notes, skipped %d, overwritten %d", imported, skipped, overwritten)
 		return nil
 	},
 }

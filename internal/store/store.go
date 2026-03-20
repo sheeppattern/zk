@@ -21,12 +21,19 @@ func NewStore(rootPath string) *Store {
 	return &Store{rootPath: rootPath}
 }
 
+// NoteError records a note file that could not be parsed during a partial listing.
+type NoteError struct {
+	FilePath string
+	Err      error
+}
+
 // Init creates the full directory structure and a default config.yaml.
 func (s *Store) Init() error {
 	dirs := []string{
 		s.rootPath,
 		filepath.Join(s.rootPath, "projects"),
 		filepath.Join(s.rootPath, "global", "notes"),
+		filepath.Join(s.rootPath, "trash"),
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0755); err != nil {
@@ -176,13 +183,18 @@ func (s *Store) UpdateNote(note *model.Note) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// DeleteNote removes a note file from disk.
+// DeleteNote moves a note file to the trash directory instead of permanently removing it.
 func (s *Store) DeleteNote(projectID, noteID string) error {
 	path := s.noteFilePath(projectID, noteID)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return fmt.Errorf("note %s not found", noteID)
 	}
-	return os.Remove(path)
+	trashDir := filepath.Join(s.rootPath, "trash")
+	if err := os.MkdirAll(trashDir, 0755); err != nil {
+		return fmt.Errorf("create trash dir: %w", err)
+	}
+	trashName := fmt.Sprintf("%s_%d.md", noteID, time.Now().Unix())
+	return os.Rename(path, filepath.Join(trashDir, trashName))
 }
 
 // ListNotes returns all notes in a project. Pass an empty projectID for global notes.
@@ -209,6 +221,39 @@ func (s *Store) ListNotes(projectID string) ([]*model.Note, error) {
 		notes = append(notes, n)
 	}
 	return notes, nil
+}
+
+// ListNotesPartial works like ListNotes but collects parse errors instead of
+// aborting. Notes that fail to parse are reported in the returned []NoteError
+// slice while successfully parsed notes are still returned.
+func (s *Store) ListNotesPartial(projectID string) ([]*model.Note, []NoteError) {
+	dir := s.notesDir(projectID)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, []NoteError{{FilePath: dir, Err: fmt.Errorf("read notes dir: %w", err)}}
+	}
+
+	var notes []*model.Note
+	var noteErrors []NoteError
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		noteID := strings.TrimSuffix(e.Name(), ".md")
+		n, err := s.GetNote(projectID, noteID)
+		if err != nil {
+			noteErrors = append(noteErrors, NoteError{
+				FilePath: s.noteFilePath(projectID, noteID),
+				Err:      err,
+			})
+			continue
+		}
+		notes = append(notes, n)
+	}
+	return notes, noteErrors
 }
 
 // ---------------------------------------------------------------------------

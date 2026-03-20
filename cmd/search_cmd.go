@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/sheeppattern/zk/internal/model"
@@ -23,6 +24,24 @@ var searchCmd = &cobra.Command{
 		minWeight, _ := cmd.Flags().GetFloat64("min-weight")
 		status, _ := cmd.Flags().GetString("status")
 		sortFlag, _ := cmd.Flags().GetString("sort")
+		createdAfterStr, _ := cmd.Flags().GetString("created-after")
+		createdBeforeStr, _ := cmd.Flags().GetString("created-before")
+
+		var createdAfter, createdBefore time.Time
+		if createdAfterStr != "" {
+			var err error
+			createdAfter, err = time.Parse("2006-01-02", createdAfterStr)
+			if err != nil {
+				return fmt.Errorf("invalid --created-after date %q: expected format YYYY-MM-DD", createdAfterStr)
+			}
+		}
+		if createdBeforeStr != "" {
+			var err error
+			createdBefore, err = time.Parse("2006-01-02", createdBeforeStr)
+			if err != nil {
+				return fmt.Errorf("invalid --created-before date %q: expected format YYYY-MM-DD", createdBeforeStr)
+			}
+		}
 
 		s := store.NewStore(getStorePath(cmd))
 		notes, err := s.ListNotes(flagProject)
@@ -82,6 +101,16 @@ var searchCmd = &cobra.Command{
 
 			// Filter by --status.
 			if status != "" && !strings.EqualFold(n.Metadata.Status, status) {
+				continue
+			}
+
+			// Filter by --created-after.
+			if !createdAfter.IsZero() && n.Metadata.CreatedAt.Before(createdAfter) {
+				continue
+			}
+
+			// Filter by --created-before.
+			if !createdBefore.IsZero() && n.Metadata.CreatedAt.After(createdBefore) {
 				continue
 			}
 
@@ -148,6 +177,8 @@ func init() {
 	searchCmd.Flags().Float64("min-weight", 0.0, "filter links with weight >= this value")
 	searchCmd.Flags().String("status", "", "filter by status (active/archived)")
 	searchCmd.Flags().String("sort", "relevance", "sort results: relevance, created, updated")
+	searchCmd.Flags().String("created-after", "", "filter notes created on or after this date (YYYY-MM-DD)")
+	searchCmd.Flags().String("created-before", "", "filter notes created on or before this date (YYYY-MM-DD)")
 
 	rootCmd.AddCommand(searchCmd)
 }

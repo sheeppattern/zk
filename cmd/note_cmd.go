@@ -109,13 +109,36 @@ var noteDeleteCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		noteID := args[0]
+		force, _ := cmd.Flags().GetBool("force")
 
 		s := store.NewStore(getStorePath(cmd))
+
+		if !force {
+			// Load the target note to confirm it exists.
+			if _, err := s.GetNote(flagProject, noteID); err != nil {
+				return fmt.Errorf("delete note: %w", err)
+			}
+			// Scan for backlinks pointing to this note.
+			allNotes, _ := s.ListNotesPartial(flagProject)
+			var backlinkCount int
+			for _, n := range allNotes {
+				for _, link := range n.Links {
+					if link.TargetID == noteID {
+						backlinkCount++
+					}
+				}
+			}
+			if backlinkCount > 0 {
+				fmt.Fprintf(os.Stderr, "Warning: %d backlink(s) point to note %s\n", backlinkCount, noteID)
+				return fmt.Errorf("note %s has backlinks; use --force to delete anyway", noteID)
+			}
+		}
+
 		if err := s.DeleteNote(flagProject, noteID); err != nil {
 			return fmt.Errorf("delete note: %w", err)
 		}
 
-		fmt.Fprintln(os.Stderr, "Deleted note "+noteID)
+		statusf("Deleted note %s", noteID)
 		return nil
 	},
 }
@@ -133,6 +156,9 @@ func init() {
 	noteUpdateCmd.Flags().String("content", "", "new content")
 	noteUpdateCmd.Flags().StringSlice("tags", nil, "new tags")
 	noteUpdateCmd.Flags().String("status", "", "new status (active, archived)")
+
+	// noteDeleteCmd flags
+	noteDeleteCmd.Flags().Bool("force", false, "force deletion even if backlinks exist")
 
 	// Register subcommands
 	noteCmd.AddCommand(noteCreateCmd)

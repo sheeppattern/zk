@@ -3,11 +3,21 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/sheeppattern/zk/internal/model"
 	"github.com/sheeppattern/zk/internal/store"
 )
+
+// ProjectDetail wraps a Project with computed statistics.
+type ProjectDetail struct {
+	*model.Project
+	NoteCount    int        `json:"note_count" yaml:"note_count"`
+	LinkCount    int        `json:"link_count" yaml:"link_count"`
+	LastActivity *time.Time `json:"last_activity,omitempty" yaml:"last_activity,omitempty"`
+}
 
 var projectCmd = &cobra.Command{
 	Use:   "project",
@@ -63,7 +73,54 @@ var projectGetCmd = &cobra.Command{
 			return fmt.Errorf("get project: %w", err)
 		}
 
-		return getFormatter().PrintProject(p)
+		// Gather note statistics.
+		notes, err := s.ListNotes(id)
+		if err != nil {
+			return fmt.Errorf("list notes for project: %w", err)
+		}
+
+		noteCount := len(notes)
+		linkCount := 0
+		var lastActivity *time.Time
+		for _, n := range notes {
+			linkCount += len(n.Links)
+			t := n.Metadata.UpdatedAt
+			if lastActivity == nil || t.After(*lastActivity) {
+				copied := t
+				lastActivity = &copied
+			}
+		}
+
+		detail := ProjectDetail{
+			Project:      p,
+			NoteCount:    noteCount,
+			LinkCount:    linkCount,
+			LastActivity: lastActivity,
+		}
+
+		f := getFormatter()
+		switch f.Format {
+		case "json":
+			return f.PrintJSON(detail)
+		case "yaml":
+			return f.PrintYAML(detail)
+		case "md":
+			var b strings.Builder
+			fmt.Fprintf(&b, "# %s\n\n", p.Name)
+			fmt.Fprintf(&b, "**ID**: %s\n", p.ID)
+			fmt.Fprintf(&b, "**Description**: %s\n", p.Description)
+			fmt.Fprintf(&b, "**Created**: %s\n", p.CreatedAt.Format("2006-01-02 15:04:05"))
+			fmt.Fprintf(&b, "**Notes**: %d\n", noteCount)
+			fmt.Fprintf(&b, "**Links**: %d\n", linkCount)
+			if lastActivity != nil {
+				fmt.Fprintf(&b, "**Last Activity**: %s\n", lastActivity.Format("2006-01-02 15:04:05"))
+			}
+			fmt.Fprintln(&b)
+			_, err := fmt.Fprint(os.Stdout, b.String())
+			return err
+		default:
+			return fmt.Errorf("unsupported format: %s", f.Format)
+		}
 	},
 }
 
@@ -79,7 +136,7 @@ var projectDeleteCmd = &cobra.Command{
 			return fmt.Errorf("delete project: %w", err)
 		}
 
-		fmt.Fprintln(os.Stderr, "deleted project", id)
+		statusf("deleted project %s", id)
 		return nil
 	},
 }
