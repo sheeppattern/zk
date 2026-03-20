@@ -766,5 +766,137 @@ func TestCLISearchLayer(t *testing.T) {
 	}
 }
 
+func TestCLIGraph(t *testing.T) {
+	storeDir := initStore(t)
+	projID := createProject(t, storeDir, "graph-proj", "")
+
+	n1 := createNote(t, storeDir, projID, "Graph Note A", "content a", nil)
+	n2 := createNote(t, storeDir, projID, "Graph Note B", "content b", nil)
+	mustRunZK(t, storeDir, "link", "add", n1, n2, "--type", "supports", "--weight", "0.9", "--project", projID)
+
+	// Default mermaid format.
+	stdout := mustRunZK(t, storeDir, "graph", "--project", projID)
+	if !strings.Contains(stdout, "graph LR") {
+		t.Errorf("expected mermaid output to contain 'graph LR', got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, n1) {
+		t.Errorf("expected mermaid output to contain note ID %s", n1)
+	}
+	if !strings.Contains(stdout, n2) {
+		t.Errorf("expected mermaid output to contain note ID %s", n2)
+	}
+	if !strings.Contains(stdout, "supports") {
+		t.Errorf("expected mermaid output to contain 'supports'")
+	}
+}
+
+func TestCLIGraphDOT(t *testing.T) {
+	storeDir := initStore(t)
+	projID := createProject(t, storeDir, "graph-dot-proj", "")
+
+	n1 := createNote(t, storeDir, projID, "DOT Note A", "content a", nil)
+	n2 := createNote(t, storeDir, projID, "DOT Note B", "content b", nil)
+	mustRunZK(t, storeDir, "link", "add", n1, n2, "--type", "supports", "--weight", "0.8", "--project", projID)
+
+	stdout := mustRunZK(t, storeDir, "graph", "--project", projID, "--format-graph", "dot")
+	if !strings.Contains(stdout, "digraph zk") {
+		t.Errorf("expected DOT output to contain 'digraph zk', got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, n1) {
+		t.Errorf("expected DOT output to contain note ID %s", n1)
+	}
+	if !strings.Contains(stdout, n2) {
+		t.Errorf("expected DOT output to contain note ID %s", n2)
+	}
+}
+
+func TestCLIExplore(t *testing.T) {
+	storeDir := initStore(t)
+	projID := createProject(t, storeDir, "explore-proj", "")
+
+	n1 := createNote(t, storeDir, projID, "Explore Hub", "hub content", nil)
+	n2 := createNote(t, storeDir, projID, "Explore Target A", "target a", nil)
+	n3 := createNote(t, storeDir, projID, "Explore Target B", "target b", nil)
+
+	mustRunZK(t, storeDir, "link", "add", n1, n2, "--type", "supports", "--weight", "0.8", "--project", projID)
+	mustRunZK(t, storeDir, "link", "add", n1, n3, "--type", "contradicts", "--weight", "0.6", "--project", projID)
+
+	stdout := mustRunZK(t, storeDir, "explore", n1, "--project", projID)
+
+	var result struct {
+		Current struct {
+			ID string `json:"id"`
+		} `json:"current"`
+		Outgoing []struct {
+			NoteID       string `json:"note_id"`
+			RelationType string `json:"relation_type"`
+		} `json:"outgoing"`
+		Incoming []struct {
+			NoteID string `json:"note_id"`
+		} `json:"incoming"`
+	}
+	parseJSON(t, stdout, &result)
+
+	if result.Current.ID != n1 {
+		t.Errorf("expected current.id=%s, got %s", n1, result.Current.ID)
+	}
+	if len(result.Outgoing) != 2 {
+		t.Fatalf("expected 2 outgoing edges, got %d", len(result.Outgoing))
+	}
+	// N1 should have incoming backlinks from n2 and n3 (bidirectional links).
+	if len(result.Incoming) < 1 {
+		t.Errorf("expected at least 1 incoming edge (bidirectional), got %d", len(result.Incoming))
+	}
+}
+
+func TestCLIExploreDepth(t *testing.T) {
+	storeDir := initStore(t)
+	projID := createProject(t, storeDir, "explore-depth-proj", "")
+
+	n1 := createNote(t, storeDir, projID, "Depth Hub", "hub", nil)
+	n2 := createNote(t, storeDir, projID, "Depth Mid", "mid", nil)
+	n3 := createNote(t, storeDir, projID, "Depth Leaf", "leaf", nil)
+
+	mustRunZK(t, storeDir, "link", "add", n1, n2, "--type", "supports", "--project", projID)
+	mustRunZK(t, storeDir, "link", "add", n2, n3, "--type", "extends", "--project", projID)
+
+	stdout := mustRunZK(t, storeDir, "explore", n1, "--project", projID, "--depth", "2")
+
+	var result struct {
+		Neighbors []struct {
+			ID string `json:"id"`
+		} `json:"neighbors"`
+	}
+	parseJSON(t, stdout, &result)
+
+	if len(result.Neighbors) == 0 {
+		t.Error("expected non-empty neighbors with --depth 2")
+	}
+}
+
+func TestCLIExploreMD(t *testing.T) {
+	storeDir := initStore(t)
+	projID := createProject(t, storeDir, "explore-md-proj", "")
+
+	n1 := createNote(t, storeDir, projID, "MD Hub", "hub content", nil)
+	n2 := createNote(t, storeDir, projID, "MD Target", "target content", nil)
+	n3 := createNote(t, storeDir, projID, "MD Other", "other content", nil)
+
+	mustRunZK(t, storeDir, "link", "add", n1, n2, "--type", "supports", "--project", projID)
+	mustRunZK(t, storeDir, "link", "add", n1, n3, "--type", "contradicts", "--project", projID)
+
+	stdout := mustRunZK(t, storeDir, "explore", n1, "--project", projID, "--format", "md")
+
+	if !strings.Contains(stdout, "# Exploring:") {
+		t.Errorf("expected MD output to contain '# Exploring:', got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "Outgoing Links") {
+		t.Errorf("expected MD output to contain 'Outgoing Links'")
+	}
+	if !strings.Contains(stdout, "zk explore") {
+		t.Errorf("expected MD output to contain navigation hints with 'zk explore'")
+	}
+}
+
 // Prevent unused import warning for fmt.
 var _ = fmt.Sprintf

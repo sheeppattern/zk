@@ -29,7 +29,7 @@ Project files (Cursor, Copilot, Windsurf) require --project-dir.`,
 }
 
 func init() {
-	skillGenerateCmd.Flags().String("agents", "all", "comma-separated agent targets: all, claude, gemini, codex, cursor, copilot, windsurf")
+	skillGenerateCmd.Flags().String("agents", "all", "comma-separated agent targets: all, claude, gemini, codex, agent-skills, cursor, copilot, windsurf")
 	skillGenerateCmd.Flags().String("project-dir", "", "project directory for project-level files (cursor, copilot, windsurf)")
 	skillGenerateCmd.Flags().Bool("global-only", false, "only generate global (user-level) files")
 	skillCmd.AddCommand(skillGenerateCmd)
@@ -48,6 +48,7 @@ func allAgentTargets() []agentTarget {
 		{Name: "claude", Global: true, WriteFn: writeClaudeSkill},
 		{Name: "gemini", Global: true, WriteFn: writeGeminiInstruction},
 		{Name: "codex", Global: true, WriteFn: writeCodexInstruction},
+		{Name: "agent-skills", Global: false, WriteFn: writeAgentSkillsStandard},
 		{Name: "cursor", Global: false, WriteFn: writeCursorRule},
 		{Name: "copilot", Global: false, WriteFn: writeCopilotInstruction},
 		{Name: "windsurf", Global: false, WriteFn: writeWindsurfRule},
@@ -181,6 +182,24 @@ func writeCodexInstruction(home string) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// Agent Skills Standard (agentskills.io): {projectDir}/agents/skills/zk/SKILL.md + references/
+func writeAgentSkillsStandard(projectDir string) (string, error) {
+	dir := filepath.Join(projectDir, "agents", "skills", "zk")
+	skillPath := filepath.Join(dir, "SKILL.md")
+
+	content := claudeFrontmatter + zkInstructionContent // same frontmatter as Claude (name + description)
+	if err := writeFile(skillPath, content); err != nil {
+		return "", err
+	}
+
+	domainPath := filepath.Join(dir, "references", "domain-guide.md")
+	if err := writeFile(domainPath, domainGuideContent); err != nil {
+		return "", err
+	}
+
+	return skillPath, nil
 }
 
 // Cursor: {projectDir}/.cursor/rules/zk.mdc
@@ -392,6 +411,28 @@ When --apply is used, zk automatically:
 2. Links them to source concrete notes via "abstracts" relation
 3. Tags them with "auto-reflect"
 
+## Graph Visualization
+
+` + bt + `bash
+zk graph --project <id>                              # Mermaid graph (default)
+zk graph --project <id> --format-graph dot            # DOT format
+zk graph --project <id> --layer abstract              # Abstract notes only
+zk graph --project <id> --type contradicts            # Only contradiction edges
+` + bt + `
+
+Outputs to stdout. Pipe to file: ` + "`zk graph --project P-XXX > graph.mmd`" + `
+
+## Explore — Interactive Navigation
+
+` + bt + `bash
+zk explore <noteID> --project <id>                    # Show connections
+zk explore <noteID> --project <id> --depth 2          # Include neighbors' neighbors
+zk explore <noteID> --project <id> --include-content  # Include note body
+zk explore <noteID> --project <id> --format md        # Human-readable with navigation hints
+` + bt + `
+
+Use explore to navigate the knowledge graph step by step. The JSON output includes outgoing links, incoming backlinks, and neighbor nodes for deeper traversal.
+
 ## Agent Workflows
 
 ### 1. Knowledge Accumulation (Concrete)
@@ -424,7 +465,14 @@ zk link list N-AAA --depth 2 --project P-XXX
 zk note get N-BBB --project P-XXX
 ` + bt + `
 
-### 4. Maintenance
+### 4. Knowledge Navigation
+` + bt + `bash
+zk graph --project P-XXX > knowledge-map.mmd          # Generate visual map
+zk explore N-HUB --project P-XXX --depth 2             # Start from hub note
+zk explore N-NEXT --project P-XXX --include-content    # Dive into connected note
+` + bt + `
+
+### 5. Maintenance
 ` + bt + `bash
 zk diagnose --project P-XXX
 zk reflect --project P-XXX           # Check abstraction health
