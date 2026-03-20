@@ -1,0 +1,16 @@
+# Binary
+zk.exe
+zk
+
+# Test data
+test-store/
+test-skill/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
