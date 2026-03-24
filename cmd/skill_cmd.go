@@ -390,8 +390,6 @@ zk note update <noteID> --summary "Updated summary" --project <id>
 zk note delete <noteID> --project <id>           # Blocked if backlinks exist
 zk note delete <noteID> --force --project <id>   # Force (moves to trash/)
 zk note move <noteID> <targetProject> --project <sourceProject>
-zk note random                                  # Random note from all projects + global
-zk note random --layer abstract                 # Random abstract note only
 
 # Author tracking
 zk note create --title "Title" --content "..." --author claude --project <id>
@@ -463,7 +461,6 @@ zk tag batch-add <tag> <noteID1> [noteID2...]
 
 ` + bt + `bash
 zk diagnose --project <id>
-zk diagnose --fix --project <id>              # Auto-repair broken links and missing backlinks
 ` + bt + `
 
 Checks: broken links, corrupted files, orphan notes, invalid relation types, out-of-range weights.
