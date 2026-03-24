@@ -9,66 +9,63 @@
 <body>
 
 <div id="app">
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <div class="sidebar-brand">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-        zk <span>Knowledge Graph</span>
-      </div>
-      <input class="search-input" id="searchInput" type="text" placeholder="Search memos..." aria-label="Search memos" />
-      <div class="filter-bar" id="filterBar"></div>
-    </div>
-    <div class="sidebar-tree" id="sidebarTree"></div>
-    <div class="sidebar-footer" id="sidebarFooter"></div>
-  </div>
-
-  <div class="editor">
-    <div class="editor-empty" id="editorEmpty">Select a memo to view and edit</div>
-    <div class="editor-content" id="editorContent">
-      <div class="editor-topbar">
-        <span class="editor-id" id="editorId"></span>
-        <span class="layer-badge" id="editorLayer"></span>
-        <span class="editor-project" id="editorProject"></span>
-      </div>
-      <input class="title-input" id="titleInput" type="text" aria-label="Memo title" />
-      <div class="save-bar" id="saveBar">
-        <span class="save-text">Unsaved changes</span>
-        <button class="save-btn" id="saveBtn" aria-label="Save changes">Save (Ctrl+S)</button>
-      </div>
-      <div class="editor-flow">
-        <div class="link-panel link-panel-in" id="linksIncoming">
-          <div class="link-panel-header">Incoming</div>
-          <div class="link-panel-list" id="linksInList"></div>
+  <!-- 상단: 에디터 -->
+  <div class="top-pane">
+    <div class="editor">
+      <div class="editor-empty" id="editorEmpty">Select a memo to view and edit</div>
+      <div class="editor-content" id="editorContent">
+        <div class="editor-topbar">
+          <span class="editor-id" id="editorId"></span>
+          <span class="layer-badge" id="editorLayer"></span>
+          <span class="editor-project" id="editorProject"></span>
         </div>
-        <div class="editor-main">
-          <textarea class="content-textarea" id="contentArea" aria-label="Memo content"></textarea>
-          <div class="section-label">Tags</div>
-          <div class="tags-area" id="tagsArea"></div>
-          <div class="section-label">Metadata</div>
-          <div class="meta-grid" id="metaGrid"></div>
-          <button class="note-delete-btn" id="deleteBtn" aria-label="Delete this memo">Delete Memo</button>
+        <input class="title-input" id="titleInput" type="text" aria-label="Memo title" />
+        <div class="save-bar" id="saveBar">
+          <span class="save-text">Unsaved changes</span>
+          <button class="save-btn" id="saveBtn" aria-label="Save changes">Save (Ctrl+S)</button>
         </div>
-        <div class="link-panel link-panel-out" id="linksOutgoing">
-          <div class="link-panel-header">Outgoing</div>
-          <div class="link-panel-list" id="linksOutList"></div>
+        <div class="editor-flow">
+          <div class="link-panel link-panel-in" id="linksIncoming">
+            <div class="link-panel-header">Incoming</div>
+            <div class="link-panel-list" id="linksInList"></div>
+          </div>
+          <div class="editor-main">
+            <textarea class="content-textarea" id="contentArea" aria-label="Memo content"></textarea>
+            <div class="section-label">Tags</div>
+            <div class="tags-area" id="tagsArea"></div>
+            <div class="section-label">Metadata</div>
+            <div class="meta-grid" id="metaGrid"></div>
+            <button class="note-delete-btn" id="deleteBtn" aria-label="Delete this memo">Delete Memo</button>
+          </div>
+          <div class="link-panel link-panel-out" id="linksOutgoing">
+            <div class="link-panel-header">Outgoing</div>
+            <div class="link-panel-list" id="linksOutList"></div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="graph-panel">
-    <div class="graph-header">Neighborhood Graph</div>
-    <div class="graph-canvas-wrap">
-      <canvas id="graphCanvas"></canvas>
-      <div class="graph-empty" id="graphEmpty">Select a memo to see its connections</div>
+  <!-- 하단: 탐색기 + 미니맵 -->
+  <div class="bottom-pane">
+    <div class="explorer">
+      <div class="explorer-header">
+        <div class="explorer-brand">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          zk <span>Explorer</span>
+        </div>
+        <input class="search-input" id="searchInput" type="text" placeholder="Search memos..." aria-label="Search memos" />
+        <div class="filter-bar" id="filterBar"></div>
+      </div>
+      <div class="sidebar-tree" id="sidebarTree"></div>
+      <div class="sidebar-footer" id="sidebarFooter"></div>
     </div>
-    <div class="graph-legend">
-      <div class="leg"><i style="background:var(--blue)"></i>concrete</div>
-      <div class="leg"><i style="background:var(--purple)"></i>abstract</div>
-      <div class="leg"><i style="background:var(--accent)"></i>supports</div>
-      <div class="leg"><i style="background:var(--danger)"></i>contradicts</div>
-      <div class="leg"><i style="background:var(--blue)"></i>extends</div>
-      <div class="leg"><i style="background:var(--orange)"></i>grounds</div>
+    <div class="minimap">
+      <div class="minimap-header">Minimap</div>
+      <div class="minimap-canvas-wrap">
+        <canvas id="graphCanvas"></canvas>
+        <div class="graph-empty" id="graphEmpty">Select a memo to see connections</div>
+      </div>
     </div>
   </div>
 </div>

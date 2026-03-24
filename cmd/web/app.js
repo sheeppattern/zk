@@ -212,6 +212,40 @@ function renderLinks() {
   }
 }
 
+function renderOutline(memo) {
+  const el = document.getElementById('outlineList');
+  if (!memo || !memo.content) {
+    el.innerHTML = '<div class="outline-empty">No content</div>';
+    return;
+  }
+  // Extract structure: lines starting with # (markdown headings) or sentences
+  const lines = memo.content.split('\n');
+  const items = [];
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('#')) {
+      const level = trimmed.match(/^#+/)[0].length;
+      const text = trimmed.replace(/^#+\s*/, '');
+      items.push({ text, level, line: i });
+    }
+  });
+  if (items.length === 0) {
+    // No headings — show first few sentences as outline
+    const sentences = memo.content.split(/[.!?。]\s*/).filter(s => s.trim()).slice(0, 5);
+    if (sentences.length === 0) {
+      el.innerHTML = '<div class="outline-empty">No structure</div>';
+      return;
+    }
+    el.innerHTML = sentences.map(s =>
+      `<div class="outline-item">${esc(trunc(s.trim(), 28))}</div>`
+    ).join('');
+    return;
+  }
+  el.innerHTML = items.map(item =>
+    `<div class="outline-item" style="padding-left:${(item.level - 1) * 10 + 6}px">${esc(trunc(item.text, 28))}</div>`
+  ).join('');
+}
+
 async function deleteLink(source, target, type) {
   if (!confirm(`Remove ${type} link?`)) return;
   const result = await api.del('/api/link', { source: Number(source), target: Number(target), type });
