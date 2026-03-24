@@ -282,13 +282,13 @@ func writeWindsurfRule(projectDir string) (string, error) {
 
 const claudeFrontmatter = `---
 name: zk
-description: "Zettelkasten memory CLI — AI 에이전트용 지식 노트 관리 도구. 원자적 노트 CRUD, 양방향 연결(관계 타입+가중치), 프로젝트 범위 관리, 검색/필터링, 무결성 진단을 지원합니다."
+description: "Zettelkasten memory CLI — AI 에이전트용 지식 관리 도구. SQLite + FTS5 풀텍스트 검색, 메모 CRUD, 관계 타입+가중치 링크, 노트 범위 관리, 웹 GUI를 지원합니다."
 ---
 
 `
 
 const cursorFrontmatter = `---
-description: "zk - Zettelkasten memory CLI for AI agents. Atomic note CRUD, typed+weighted bidirectional links, project scoping, search, diagnostics."
+description: "zk - Zettelkasten memory CLI for AI agents. SQLite + FTS5 search, memo CRUD, typed+weighted links, note scoping, web GUI."
 alwaysApply: true
 ---
 
@@ -309,8 +309,13 @@ trigger: always_on
 var SkillVersion = "dev"
 
 // SkillVersionTag returns the HTML comment used to embed version in skill files.
+// Uses Version (app version) when SkillVersion is "dev".
 func SkillVersionTag() string {
-	return fmt.Sprintf("<!-- zk-skill-version: %s -->\n", SkillVersion)
+	v := SkillVersion
+	if v == "dev" && Version != "dev" {
+		v = Version
+	}
+	return fmt.Sprintf("<!-- zk-skill-version: %s -->\n", v)
 }
 
 // bt is a shorthand for triple backticks to use inside raw string constants.
@@ -326,19 +331,26 @@ var zkInstructionContent = `# Zettelkasten Memory CLI (zk)
 ## When to Use zk
 
 You should **proactively** use zk whenever you:
-- Learn something new during a task (create a concrete note)
-- Notice a pattern, tension, or contradiction (create an abstract note)
+- Learn something new during a task (create a concrete memo)
+- Notice a pattern, tension, or contradiction (create an abstract memo)
 - Make a decision or change your understanding (link with supports/contradicts/replaces/invalidates)
-- Finish a research or analysis task (summarize findings as notes)
-- Start a new session and need context (search/explore existing notes)
+- Finish a research or analysis task (summarize findings as memos)
+- Start a new session and need context (search/explore existing memos)
 
-**Do not wait to be asked.** If you are thinking about something worth remembering, record it. If two ideas conflict, link them with contradicts. If new data changes an old conclusion, link with invalidates or replaces. The value of zk comes from habitual use, not occasional use.
+**Do not wait to be asked.** If you are thinking about something worth remembering, record it. The value of zk comes from habitual use, not occasional use.
+
+## Concepts
+
+- **Note**: a container that groups related memos (like a folder/project)
+- **Memo**: an atomic knowledge record (the actual content)
+- **Link**: a typed, weighted connection between memos (single-stored, queried both ways)
+- IDs are integers (1, 2, 3...), auto-incremented by the database
 
 ## Global Options
 
 ` + bt + `bash
 --format <fmt>     # Output format: json (default) | yaml | md
---project <id>     # Project scope
+--note <id>        # Note scope for memos (0 = global)
 --verbose          # Debug output to stderr
 --quiet            # Suppress stderr status messages
 ` + bt + `
@@ -346,260 +358,214 @@ You should **proactively** use zk whenever you:
 ## Init & Config
 
 ` + bt + `bash
-zk init                              # Initialize store
+zk init                              # Initialize store (SQLite)
 zk init --path /custom               # Custom path
 zk config show                       # Show current config
-zk config set default_project P-XXX  # Set default project
+zk config set default_note 1         # Set default note scope
 zk config set default_format yaml    # Set default output format
-zk config set default_author claude  # Set default note author
+zk config set default_author claude  # Set default memo author
 ` + bt + `
 
-## Projects
+## Notes (Containers)
 
 ` + bt + `bash
-zk project create <name> --description "desc"
-zk project list
-zk project get <id>       # Includes note count, link count, last activity
-zk project delete <id>
+zk note create <name> --description "desc"
+zk note list
+zk note get <id>       # Includes memo count, link count
+zk note delete <id>
 ` + bt + `
 
-## Notes (Concrete/Abstract Layers)
+## Memos (Concrete/Abstract Layers)
 
-Every note belongs to a layer:
+Every memo belongs to a layer:
 - **concrete** (default): facts, observations, data records
 - **abstract**: patterns, tensions, questions, insights
 
 ` + bt + `bash
-# Concrete notes (facts)
-zk note create --title "Title" --content "Body" --tags "t1,t2" --layer concrete --project <id>
+# Concrete memos (facts)
+zk memo create --title "Title" --content "Body" --tags "t1,t2" --layer concrete --note <id>
 
-# With summary (for quick scanning)
-zk note create --title "Title" --content "Body" --summary "Brief description" --project <id>
+# With summary and source
+zk memo create --title "Title" --content "Body" --summary "Brief" --note <id>
 
-# Abstract notes (insights)
-zk note create --title "Tension: X vs Y" --content "..." --layer abstract --project <id>
+# Abstract memos (insights)
+zk memo create --title "Tension: X vs Y" --content "..." --layer abstract --note <id>
 
-# Templates
-zk note create --title "Title" --template research --project <id>
-
-zk note get <noteID> --project <id>
-zk note list --project <id>
-zk note list --layer abstract --project <id>     # Filter by layer
-zk note update <noteID> --title "New" --project <id>
-zk note update <noteID> --summary "Updated summary" --project <id>
-zk note delete <noteID> --project <id>           # Blocked if backlinks exist
-zk note delete <noteID> --force --project <id>   # Force (moves to trash/)
-zk note move <noteID> <targetProject> --project <sourceProject>
+zk memo get <memoID>
+zk memo list --note <id>
+zk memo list --layer abstract --note <id>
+zk memo update <memoID> --title "New"
+zk memo update <memoID> --summary "Updated summary"
+zk memo delete <memoID>
+zk memo move <memoID> <targetNoteID>
+zk memo random                        # Random memo from all notes
+zk memo random --layer abstract       # Random abstract memo
 
 # Author tracking
-zk note create --title "Title" --content "..." --author claude --project <id>
-zk note update <noteID> --author gemini --project <id>
+zk memo create --title "Title" --content "..." --author claude --note <id>
 ` + bt + `
 
-## Quick Note
+## Quick Memo
 
-Minimal note creation from a single text argument — no flags required:
+Minimal memo creation from a single text argument:
 
 ` + bt + `bash
-zk quicknote "My quick thought here"
-zk quicknote "Observation about X" --project <id>
-zk quicknote "Found a pattern" --author claude --project <id>
+zk quickmemo "My quick thought here"
+zk quickmemo "Observation about X" --note <id>
+zk quickmemo "Found a pattern" --author claude
 ` + bt + `
 
 - Title: auto-derived (first 50 chars, truncated at word boundary)
 - Content: full input text
 - Layer: concrete (default)
-- Author: --author flag → config default_author → empty
 
 ## Links (Relation Type + Weight)
 
+Links are stored once and queried both directions (no bidirectional duplication).
+
 ` + bt + `bash
-# Same project
-zk link add <src> <tgt> --type supports --weight 0.8 --project <id>
-
-# Cross-project
-zk link add <src> <tgt> --type extends --project P-1 --target-project P-2
-
-zk link remove <src> <tgt> --project <id>
-zk link list <noteID> --project <id>
-zk link list <noteID> --type supports              # Filter by relation type
-zk link list <noteID> --sort-weight                 # Sort by weight desc
-zk link list <noteID> --depth 3 --project <id>     # BFS traversal
+zk link add <src> <tgt> --type supports --weight 0.8
+zk link remove <src> <tgt> --type supports
+zk link list <memoID>                              # Show outgoing + incoming
+zk link list <memoID> --type supports              # Filter by relation type
+zk link list <memoID> --sort-weight                # Sort by weight desc
+zk link list <memoID> --depth 3                    # BFS traversal (max depth 5)
 ` + bt + `
 
 Relation types: related (default), supports, contradicts, extends, causes, example-of, abstracts, grounds, replaces, invalidates
-- abstracts: concrete → abstract ("this fact led to this insight")
-- grounds: abstract → concrete ("this insight is grounded in this fact")
-- replaces: new note supersedes an older one
-- invalidates: data disproves a hypothesis
 
-Duplicate links are automatically prevented.
-Cross-project backlinks are included in link list results.
+## Search (FTS5 Full-Text)
 
-## Search
+Powered by SQLite FTS5 with BM25 ranking. Searches title, content, tags, and summary.
 
 ` + bt + `bash
-zk search <query> --project <id>
-zk search "Redis" --tags "cache" --relation supports --min-weight 0.5
+zk search <query>
+zk search "Redis" --tags "cache"
+zk search "auth" --sort relevance                  # relevance | created | updated
+zk search "tension" --layer abstract --note <id>
+zk search "pattern" --author claude
 zk search "data" --created-after 2026-01-01 --created-before 2026-12-31
-zk search "auth" --sort relevance    # relevance | created | updated
-zk search "tension" --layer abstract --project <id>   # Search only abstract notes
-zk search "pattern" --author claude --project <id>   # Filter by author
 ` + bt + `
+
+FTS5 syntax: wrap in quotes for phrase match. Prefix matching with *.
 
 ## Tags
 
 ` + bt + `bash
-zk tag add <noteID> <tag1> [tag2...] --project <id>
-zk tag remove <noteID> <tag1> [tag2...]
-zk tag replace <oldTag> <newTag> --project <id>
-zk tag list --project <id>
-zk tag batch-add <tag> <noteID1> [noteID2...]
+zk tag add <memoID> <tag1> [tag2...]
+zk tag remove <memoID> <tag1> [tag2...]
+zk tag replace <oldTag> <newTag> --note <id>
+zk tag list --note <id>
+zk tag batch-add <tag> <memoID1> [memoID2...]
 ` + bt + `
 
 ## Diagnostics
 
 ` + bt + `bash
-zk diagnose --project <id>
+zk diagnose
+zk diagnose --format md
 ` + bt + `
 
-Checks: broken links, corrupted files, orphan notes, invalid relation types, out-of-range weights.
+Checks: orphan memos, invalid relation types, out-of-range weights.
 
 ## Export & Import
 
 ` + bt + `bash
-zk export --project <id> --format yaml --output backup.yaml
-zk export --project <id> --notes N-AAA,N-BBB
-zk import --file backup.yaml --project <id> --conflict skip  # skip|overwrite|new-id
+zk export --note <id> --format yaml --output backup.yaml
+zk import --file backup.yaml --note <id>
 ` + bt + `
+
+## Reflect — Insight Engine
+
+` + bt + `bash
+zk reflect --note <id>                 # Show insight suggestions
+zk reflect --note <id> --format md     # Markdown report
+zk reflect --note <id> --apply         # Auto-create suggested abstract memos
+zk reflect --note <id> --suggest-links # Suggest missing links
+` + bt + `
+
+Detects: tensions, hubs without abstraction, orphan memos, low abstraction ratio, similar unlinked memos.
+
+## Graph & Explore
+
+` + bt + `bash
+zk graph --note <id>                               # Mermaid graph
+zk graph --note <id> --format-graph dot            # DOT format
+zk explore <memoID> --depth 2                      # Show connections
+zk explore <memoID> --include-content --format md  # Full detail
+` + bt + `
+
+## Web GUI
+
+` + bt + `bash
+zk serve                               # http://127.0.0.1:8080
+zk serve --addr :3000                  # Custom port
+` + bt + `
+
+Features: memo editor (title, summary, content, tags, status, source), incoming/outgoing link panels, neighborhood graph minimap, FTS5 search, note/memo tree explorer.
 
 ## Schema Introspection
 
 ` + bt + `bash
 zk schema              # List all resources
-zk schema note         # Note field details
+zk schema memo         # Memo field details
 zk schema link         # Link field details
 zk schema relation-types
 ` + bt + `
 
-## Pipeline-Safe Output
-
-- stdout: pure data only (JSON/YAML/Markdown)
-- stderr: status, errors, debug info
-- Use --quiet to suppress stderr status messages
-
-## Reflect — Insight Engine
-
-Analyzes concrete notes and suggests missing abstract notes:
-
-` + bt + `bash
-zk reflect --project <id>              # Show insight suggestions
-zk reflect --project <id> --format md  # Markdown report
-zk reflect --project <id> --apply      # Auto-create suggested abstract notes
-zk reflect --project <id> --suggest-links  # Suggest missing links between similar notes
-` + bt + `
-
-Detects:
-- **Tensions**: contradicts pairs without a synthesizing abstract note
-- **Hubs without abstraction**: concrete notes with 4+ links but no abstract
-- **Orphan notes**: notes with zero connections
-- **Abstraction ratio**: warns if abstract/total ratio is too low
-- **Suggested links** (--suggest-links): notes with high content similarity but no existing link, using character trigram Jaccard similarity
-
-When --apply is used, zk automatically:
-1. Creates abstract notes with suggested titles
-2. Links them to source concrete notes via "abstracts" relation
-3. Tags them with "auto-reflect"
-
-## Graph Visualization
-
-` + bt + `bash
-zk graph --project <id>                              # Mermaid graph (default)
-zk graph --project <id> --format-graph dot            # DOT format
-zk graph --project <id> --layer abstract              # Abstract notes only
-zk graph --project <id> --type contradicts            # Only contradiction edges
-` + bt + `
-
-Outputs to stdout. Pipe to file: ` + "`zk graph --project P-XXX > graph.mmd`" + `
-
-## Explore — Interactive Navigation
-
-` + bt + `bash
-zk explore <noteID> --project <id>                    # Show connections
-zk explore <noteID> --project <id> --depth 2          # Include neighbors' neighbors
-zk explore <noteID> --project <id> --include-content  # Include note body
-zk explore <noteID> --project <id> --format md        # Human-readable with navigation hints
-` + bt + `
-
-Use explore to navigate the knowledge graph step by step. The JSON output includes outgoing links, incoming backlinks, and neighbor nodes for deeper traversal.
-
 ## Agent Workflows
 
-### 1. Knowledge Accumulation (Concrete)
+### 1. Knowledge Accumulation
 ` + bt + `bash
 zk init
-zk project create "research" --description "Research project"
-zk note create --title "Finding 1" --content "..." --tags "finding" --layer concrete --project P-XXX
-zk note create --title "Finding 2" --content "..." --tags "finding" --layer concrete --project P-XXX
-zk link add N-AAA N-BBB --type supports --weight 0.9 --project P-XXX
+zk note create "research" --description "Research project"
+zk memo create --title "Finding 1" --content "..." --tags "finding" --note 1
+zk memo create --title "Finding 2" --content "..." --tags "finding" --note 1
+zk link add 1 2 --type supports --weight 0.9
 ` + bt + `
 
-### 2. Insight Derivation (Concrete → Abstract)
+### 2. Insight Derivation
 ` + bt + `bash
-# Check what insights are missing
-zk reflect --project P-XXX --format md
-
-# Auto-create abstract notes from analysis
-zk reflect --project P-XXX --apply
-
-# Or manually create abstract notes
-zk note create --title "Growth vs Retention tradeoff" --content "..." --layer abstract --project P-XXX
-zk link add N-CONCRETE N-ABSTRACT --type abstracts --weight 0.8 --project P-XXX
+zk reflect --note 1 --format md       # Check what insights are missing
+zk reflect --note 1 --apply           # Auto-create abstract memos
+zk memo create --title "Growth vs Retention" --content "..." --layer abstract --note 1
+zk link add 1 3 --type abstracts --weight 0.8
 ` + bt + `
 
 ### 3. Knowledge Exploration
 ` + bt + `bash
-zk search "keyword" --project P-XXX
-zk search "tension" --layer abstract --project P-XXX    # Browse insights only
-zk link list N-AAA --depth 2 --project P-XXX
-zk note get N-BBB --project P-XXX
+zk search "keyword" --note 1
+zk search "tension" --layer abstract
+zk link list 1 --depth 2
+zk memo get 2
 ` + bt + `
 
-### 4. Knowledge Navigation
+### 4. Maintenance
 ` + bt + `bash
-zk graph --project P-XXX > knowledge-map.mmd          # Generate visual map
-zk explore N-HUB --project P-XXX --depth 2             # Start from hub note
-zk explore N-NEXT --project P-XXX --include-content    # Dive into connected note
+zk diagnose
+zk reflect --note 1
+zk export --note 1 --output snapshot.yaml
 ` + bt + `
 
-### 5. Maintenance
-` + bt + `bash
-zk diagnose --project P-XXX
-zk reflect --project P-XXX           # Check abstraction health
-zk export --project P-XXX --output snapshot.yaml
-` + bt + `
-
-## Storage Layout
+## Storage
 
 ` + bt + `
 {store_path}/
-├── config.yaml
-├── projects/{project-id}/
-│   ├── project.yaml
-│   └── notes/{note-id}.md    # YAML frontmatter + Markdown body
-├── global/notes/              # Project-less notes
-├── trash/                     # Soft-deleted notes
-└── templates/                 # Note templates (.yaml)
+└── store.db     # Single SQLite database (FTS5, WAL mode)
 ` + bt + `
 
-## Key Notes
+Tables: notes, memos, memos_fts (FTS5), links, trash, config.
 
-- Note metadata supports optional ` + "`summary`" + ` and ` + "`author`" + ` fields
-- Use ` + "`zk quicknote`" + ` for fast capture without specifying title/layer/tags
-- Note files use YAML frontmatter + Markdown body format
-- Links are bidirectional (add creates both source→target and target→source)
-- Without --project, notes go to global scope
-- Deleted notes move to trash/ (recoverable)
+## Key Facts
+
+- Storage: single SQLite file (store.db) with FTS5 full-text search
+- IDs: integer auto-increment (1, 2, 3...)
+- Links: single-stored, queried both directions (no duplication)
+- Memos support: title, content, tags, layer, summary, author, source, status
+- Use ` + "`zk quickmemo`" + ` for fast capture
+- Without --note, memos go to global scope (note_id=0)
+- Deleted memos move to trash (recoverable)
+- Pipeline-safe: stdout = data, stderr = status/errors
 - exit code: 0=success, 1=error
 `
 
@@ -609,89 +575,81 @@ var domainGuideContent = `# Zettelkasten Domain Guide
 
 ## Core Principles
 
-### Atomic Notes
-- One note = one idea/information unit
-- Keep notes focused and reusable
-- Split complex topics into connected atomic notes
+### Atomic Memos
+- One memo = one idea/information unit
+- Keep memos focused and reusable
+- Split complex topics into connected atomic memos
 
 ### Concrete/Abstract Layers
-Notes belong to one of two layers:
+Memos belong to one of two layers:
 - **concrete**: Facts, observations, metrics, specifications, data points
 - **abstract**: Patterns, tensions, questions, insights, strategic decisions
 
 The power of zk comes from the interplay between layers:
-- Concrete notes accumulate raw knowledge
-- Abstract notes emerge when you notice patterns, contradictions, or questions across concrete notes
-- Use ` + "`zk reflect`" + ` to automatically detect where abstract notes are needed
+- Concrete memos accumulate raw knowledge
+- Abstract memos emerge when you notice patterns, contradictions, or questions
+- Use ` + "`zk reflect`" + ` to automatically detect where abstract memos are needed
 
-### Bidirectional Links
-- All links are automatically bidirectional
+### Links
+- Links are stored once and queried both directions
 - Relation types express "why" the connection exists
-- Weights express "how strong" the connection is
+- Weights express "how strong" the connection is (0.0–1.0)
 
 ## Relation Type Guide
 
-| Type | Meaning | Layer Direction | Example |
-|------|---------|-----------------|---------|
-| related | General relation (default) | any → any | Different angles of same topic |
-| supports | Evidence, backing | any → any | Evidence supports a claim |
-| contradicts | Contradiction | any → any | Conflicting opinions or data |
-| extends | Extension | any → any | Develops an idea further |
-| causes | Causation | any → any | Cause-effect relationship |
-| example-of | Instance | any → any | Concrete example of a concept |
-| abstracts | Insight derivation | concrete → abstract | "This fact led to this insight" |
-| grounds | Evidence grounding | abstract → concrete | "This insight is based on this fact" |
-| replaces | Supersession | any → any | New note supersedes an older one |
-| invalidates | Disproof | any → any | Data disproves a hypothesis |
-
-### When to use abstracts/grounds
-- After creating several concrete notes, ask: "What pattern or tension do I see?"
-- Create an abstract note for the insight
-- Link concrete → abstract with "abstracts" relation
-- Link abstract → concrete with "grounds" relation
-- This makes the reasoning chain explicit and traversable
+| Type | Meaning | Example |
+|------|---------|---------|
+| related | General relation (default) | Different angles of same topic |
+| supports | Evidence, backing | Evidence supports a claim |
+| contradicts | Contradiction | Conflicting opinions or data |
+| extends | Extension | Develops an idea further |
+| causes | Causation | Cause-effect relationship |
+| example-of | Instance | Concrete example of a concept |
+| abstracts | Insight derivation | "This fact led to this insight" |
+| grounds | Evidence grounding | "This insight is based on this fact" |
+| replaces | Supersession | New memo supersedes an older one |
+| invalidates | Disproof | Data disproves a hypothesis |
 
 ## Weight Guide
 
 | Range | Meaning | When to use |
 |-------|---------|-------------|
-| 0.8~1.0 | Very strong (core connection) | Direct evidence, primary cause, key insight |
-| 0.5~0.7 | Moderate (reference level) | Supporting context, related but not central |
-| 0.1~0.4 | Weak (indirect connection) | Tangential, might be relevant later |
+| 0.8–1.0 | Very strong (core) | Direct evidence, primary cause, key insight |
+| 0.5–0.7 | Moderate (reference) | Supporting context, related but not central |
+| 0.1–0.4 | Weak (indirect) | Tangential, might be relevant later |
 
 ## Best Practices
 
 1. **Start concrete, derive abstract**: Record facts first, then notice patterns
-2. **Use ` + "`zk reflect`" + ` regularly**: It detects tensions, orphans, and hubs that need abstraction
-3. **Name abstract notes as questions**: "X vs Y — what should we choose?" is more useful than "Analysis of X"
-4. **Isolate context with projects**: Group related notes in the same project
-5. **Cross-cut with tags**: Use tags for themes that span projects
-6. **Run ` + "`zk diagnose`" + ` periodically**: Find broken links and orphan notes
+2. **Use ` + "`zk reflect`" + ` regularly**: Detects tensions, orphans, and hubs needing abstraction
+3. **Name abstract memos as questions**: "X vs Y — what should we choose?"
+4. **Isolate context with notes**: Group related memos in the same note
+5. **Cross-cut with tags**: Use tags for themes that span notes
+6. **Run ` + "`zk diagnose`" + ` periodically**: Find orphan memos and invalid links
 7. **Backup with ` + "`zk export`" + `**: Regular snapshots prevent data loss
 8. **Use specific relation types**: Don't just use "related" — express the actual relationship
-9. **Leverage search filters**: Combine --tags, --relation, --min-weight, --layer for precise queries
-10. **Track abstraction ratio**: Aim for 20-30% abstract notes; below 10% suggests missing insights
-11. **Write summaries for long notes**: Notes over 500 chars benefit from a summary — agents scan summaries before reading full content
+9. **Leverage FTS5 search**: Combine --tags, --layer, --author for precise queries
+10. **Write summaries**: Memos over 500 chars benefit from a --summary for quick scanning
+11. **Use ` + "`zk quickmemo`" + `**: Fast capture when structure can wait
 
 ## Proactive Usage Mindset
 
-zk is not a passive archive — it is an active thinking tool. As an AI agent, you should:
-- **Record as you go**: When you discover a fact, make a decision, or change your mind — write it down immediately
-- **Link aggressively**: Every note should connect to at least one other note. If it doesn't, ask why it exists in isolation
-- **Challenge yourself**: After creating 3+ concrete notes, run ` + "`zk reflect`" + ` and act on the suggestions
-- **Use contradicts liberally**: Disagreement and tension are the most productive signals — they show where thinking is needed
-- **Update, don't append**: If a note's conclusion changes, create a new note and link with replaces/invalidates rather than making the old note longer
-- **Summarize proactively**: When creating or updating a note with >500 chars, add a --summary so future sessions can scan quickly
-- **Use quicknote for fast capture**: When the thought is more important than the structure, use ` + "`zk quicknote`" + ` and classify later
-- **Set your author**: Run ` + "`zk config set default_author <name>`" + ` so every note tracks who wrote it
-- **Discover hidden links**: Run ` + "`zk reflect --suggest-links`" + ` periodically to find similar notes that aren't connected yet
+zk is not a passive archive — it is an active thinking tool. As an AI agent:
+- **Record as you go**: Discover → write it down immediately
+- **Link aggressively**: Every memo should connect to at least one other
+- **Challenge yourself**: After 3+ concrete memos, run ` + "`zk reflect`" + `
+- **Use contradicts liberally**: Tension signals where thinking is needed
+- **Update, don't append**: New conclusion? New memo + replaces/invalidates link
+- **Summarize proactively**: >500 chars → add --summary
+- **Set your author**: ` + "`zk config set default_author <name>`" + `
+- **Discover hidden links**: ` + "`zk reflect --suggest-links`" + ` periodically
 
 ## Anti-Patterns
 
-- **Waiting to be told**: Don't wait for the user to say "record this" — if it's worth thinking about, it's worth noting
-- **Dumping without linking**: Creating notes without connecting them defeats the purpose
-- **All concrete, no abstract**: Recording facts without deriving insights means no structured thinking
-- **Vague relations**: Using "related" for everything loses the semantic richness
-- **Ignoring tensions**: contradicts links are the most valuable — they reveal where decisions are needed
-- **Appending endlessly**: Growing a single note instead of splitting into hypothesis → evidence → conclusion
+- **Waiting to be told**: If it's worth thinking about, it's worth noting
+- **Dumping without linking**: Unlinked memos defeat the purpose
+- **All concrete, no abstract**: Facts without insights = no structured thinking
+- **Vague relations**: "related" for everything loses semantic richness
+- **Ignoring tensions**: contradicts links are the most valuable
+- **Appending endlessly**: Split into hypothesis → evidence → conclusion
 `
