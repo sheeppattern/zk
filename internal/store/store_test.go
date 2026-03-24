@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 )
 
 func newTestStore(t *testing.T) *Store {

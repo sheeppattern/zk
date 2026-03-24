@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 )
 
 // ReflectReport holds the full reflection analysis results.
@@ -39,9 +39,9 @@ var reflectCmd = &cobra.Command{
 	Use:   "reflect",
 	Short: "Analyze memos and suggest abstract insights",
 	Long:  "Analyze memos to detect tensions, hubs without abstraction, and orphan clusters, then suggest abstract insight memos.",
-	Example: `  zk reflect
-  zk reflect --format md
-  zk reflect --apply`,
+	Example: `  nete reflect
+  nete reflect --format md
+  nete reflect --apply`,
 	RunE: runReflect,
 }
 

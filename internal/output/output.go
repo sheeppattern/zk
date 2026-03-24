@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 )
 
 // memoView is a JSON/YAML-serializable representation of a Memo.

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 )
 
 // SchemaField describes a single field in a resource schema.
@@ -147,7 +147,7 @@ func printSchemaListMD(resources []SchemaResource) {
 		fmt.Fprintf(&b, "| %s | %s |\n", r.Name, r.Description)
 	}
 	fmt.Fprintln(&b)
-	fmt.Fprintln(&b, "Run `zk schema <resource>` for detailed field information.")
+	fmt.Fprintln(&b, "Run `nete schema <resource>` for detailed field information.")
 	fmt.Fprint(os.Stdout, b.String())
 }
 
@@ -176,9 +176,9 @@ var schemaCmd = &cobra.Command{
 	Use:   "schema [resource]",
 	Short: "Show schema information for resources",
 	Long:  "Display available resources and their field definitions.",
-	Example: `  zk schema
-  zk schema memo
-  zk schema relation-types`,
+	Example: `  nete schema
+  nete schema memo
+  nete schema relation-types`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		registry := buildSchemaRegistry()

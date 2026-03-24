@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 )
 
 var (
@@ -21,10 +21,10 @@ var graphCmd = &cobra.Command{
 	Use:   "graph",
 	Short: "Generate a Mermaid or DOT graph of memo connections",
 	Long:  "Visualize the link structure between memos as a Mermaid or DOT graph output to stdout.",
-	Example: `  zk graph
-  zk graph --format-graph dot
-  zk graph --layer abstract
-  zk graph --type supports --format-graph mermaid`,
+	Example: `  nete graph
+  nete graph --format-graph dot
+  nete graph --layer abstract
+  nete graph --type supports --format-graph mermaid`,
 	RunE: runGraph,
 }
 
@@ -137,7 +137,7 @@ func runGraph(cmd *cobra.Command, args []string) error {
 		}
 
 	case "dot":
-		b.WriteString("digraph zk {\n")
+		b.WriteString("digraph nete {\n")
 		b.WriteString("  rankdir=LR;\n")
 		b.WriteString("  node [shape=box, style=filled];\n")
 		for _, m := range sortedMemos {

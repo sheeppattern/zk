@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 )
 
 // DiagnosticReport holds the full diagnosis results.
@@ -36,8 +36,8 @@ var diagnoseCmd = &cobra.Command{
 	Use:   "diagnose",
 	Short: "Diagnose storage for orphan memos, invalid data in links",
 	Long:  "Run diagnostic checks on the store to find orphan memos, invalid relation types, and invalid weights in the links table.",
-	Example: `  zk diagnose
-  zk diagnose --format md`,
+	Example: `  nete diagnose
+  nete diagnose --format md`,
 	RunE: runDiagnose,
 }
 

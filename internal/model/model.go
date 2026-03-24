@@ -81,14 +81,14 @@ type Config struct {
 }
 
 // DefaultConfig returns a Config with sensible defaults.
-// StorePath defaults to ~/.zk-memory.
+// StorePath defaults to ~/.nete.
 func DefaultConfig() *Config {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "."
 	}
 	return &Config{
-		StorePath:     filepath.Join(home, ".zk-memory"),
+		StorePath:     filepath.Join(home, ".nete"),
 		DefaultNote:   "",
 		DefaultFormat: "md",
 	}

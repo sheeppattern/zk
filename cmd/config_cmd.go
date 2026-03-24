@@ -8,14 +8,14 @@ import (
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Manage zk configuration",
+	Short: "Manage nete configuration",
 }
 
 var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Show current configuration",
-	Example: `  zk config show
-  zk config show --format yaml`,
+	Example: `  nete config show
+  nete config show --format yaml`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := openStore(cmd)
@@ -35,8 +35,8 @@ var configShowCmd = &cobra.Command{
 var configSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set a configuration value",
-	Example: `  zk config set default_note 1
-  zk config set default_format yaml`,
+	Example: `  nete config set default_note 1
+  nete config set default_format yaml`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]

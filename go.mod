@@ -1,4 +1,4 @@
-module github.com/sheeppattern/zk
+module github.com/sheeppattern/nete
 
 go 1.26.1
 

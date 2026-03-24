@@ -5,15 +5,15 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/store"
+	"github.com/sheeppattern/nete/internal/store"
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize the Zettelkasten storage",
 	Long:    "Creates the SQLite database for the Zettelkasten memory store.",
-	Example: `  zk init
-  zk init --path /custom/store`,
+	Example: `  nete init
+  nete init --path /custom/store`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		storePath := getStorePath(cmd)
 
@@ -33,7 +33,7 @@ var initCmd = &cobra.Command{
 			return fmt.Errorf("failed to initialize store: %w", err)
 		}
 
-		statusf("initialized zk store at %s", storePath)
+		statusf("initialized nete store at %s", storePath)
 
 		// Install global agent skill files (non-fatal on failure).
 		if err := WriteGlobalAgentFiles(); err != nil {
@@ -45,5 +45,5 @@ var initCmd = &cobra.Command{
 }
 
 func init() {
-	initCmd.Flags().String("path", "", "path for the zk store (overrides default)")
+	initCmd.Flags().String("path", "", "path for the nete store (overrides default)")
 }

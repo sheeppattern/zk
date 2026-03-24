@@ -28,7 +28,7 @@ gh pr merge <번호> --merge --delete-branch
 
 ```bash
 # Build binary
-go build -o zk.exe .
+go build -o nete.exe .
 
 # Run all tests
 go test ./... -race -cover
@@ -39,16 +39,16 @@ go test ./internal/store/ -v
 go test ./cmd/ -v -count=1    # integration tests (builds binary)
 
 # Build with version + skill version (git hash)
-go build -ldflags "-X github.com/sheeppattern/zk/cmd.Version=0.1.0 -X github.com/sheeppattern/zk/cmd.SkillVersion=$(git rev-parse --short HEAD)" -o zk.exe .
+go build -ldflags "-X github.com/sheeppattern/nete/cmd.Version=0.1.0 -X github.com/sheeppattern/nete/cmd.SkillVersion=$(git rev-parse --short HEAD)" -o nete.exe .
 ```
 
 ## Skill Content Sync Policy
 
 When CLI commands, flags, relation types, or workflows change, update the skill instruction content in `cmd/skill_cmd.go`:
-- `zkInstructionContent` — shared command reference used by all 6 agent tools (Claude, Gemini, Codex, Cursor, Copilot, Windsurf)
+- `neteInstructionContent` — shared command reference used by all 6 agent tools (Claude, Gemini, Codex, Cursor, Copilot, Windsurf)
 - `domainGuideContent` — best practices and domain knowledge
-- These are the primary way AI agents learn to use zk, so they must stay accurate and complete
-- After updating, run `zk skill generate --project-dir .` to verify the generated files render correctly
+- These are the primary way AI agents learn to use nete, so they must stay accurate and complete
+- After updating, run `nete skill generate --project-dir .` to verify the generated files render correctly
 
 ## Test Coverage Policy
 
@@ -78,21 +78,21 @@ main.go → cmd/ → internal/store/ → SQLite (store.db)
 
 ### Key Patterns
 
-**Store path resolution** (`getStorePath` in root.go): `--path` flag → `ZKMEMORY_PATH` env → `~/.zk-memory`. DB file: `{store_path}/store.db`.
+**Store path resolution** (`getStorePath` in root.go): `--path` flag → `NETE_PATH` env → `~/.nete`. DB file: `{store_path}/store.db`.
 
 **Note scoping**: `flagNote=0` = global, non-zero = specific note container.
 
 **Links**: Single INSERT into `links` table. Both directions queried via `WHERE source_id=? OR target_id=?`. BFS traversal capped at depth 5, 1000 results.
 
-**Memo layers**: `concrete` (facts) vs `abstract` (insights). `zk reflect` analyzes concrete memos and suggests abstract ones.
+**Memo layers**: `concrete` (facts) vs `abstract` (insights). `nete reflect` analyzes concrete memos and suggests abstract ones.
 
 **FTS5 search**: `memos_fts` virtual table synced via triggers. BM25 ranking (title=10, content=1, tags=5, summary=3). Tag filtering via `json_each()`.
 
 **Output contract**: stdout = pure data, stderr = status/errors.
 
-**Multi-agent skills**: `zk init` generates instruction files for AI tools. Content is shared via `zkInstructionContent` in `cmd/skill_cmd.go`.
+**Multi-agent skills**: `nete init` generates instruction files for AI tools. Content is shared via `neteInstructionContent` in `cmd/skill_cmd.go`.
 
-**Web GUI**: `zk serve` embeds `cmd/web/` (HTML+CSS+JS) via `go:embed`. API at `/api/`. Default bind: `127.0.0.1:8080`.
+**Web GUI**: `nete serve` embeds `cmd/web/` (HTML+CSS+JS) via `go:embed`. API at `/api/`. Default bind: `127.0.0.1:8080`.
 
 ### Storage
 
@@ -103,4 +103,4 @@ main.go → cmd/ → internal/store/ → SQLite (store.db)
 
 ### Module Path
 
-`github.com/sheeppattern/zk` — all internal imports use this prefix.
+`github.com/sheeppattern/nete` — all internal imports use this prefix.

@@ -32,7 +32,7 @@ jobs:
       - name: Build binaries
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          LDFLAGS="-X github.com/sheeppattern/zk/cmd.Version=${VERSION}"
+          LDFLAGS="-X github.com/sheeppattern/nete/cmd.Version=${VERSION}"
 
           # Build matrix: os/arch combinations
           platforms=(
@@ -47,7 +47,7 @@ jobs:
           mkdir -p dist
           for platform in "${platforms[@]}"; do
             IFS='/' read -r GOOS GOARCH <<< "$platform"
-            output="dist/zk_${GOOS}_${GOARCH}"
+            output="dist/nete_${GOOS}_${GOARCH}"
             if [ "$GOOS" = "windows" ]; then
               output="${output}.exe"
             fi

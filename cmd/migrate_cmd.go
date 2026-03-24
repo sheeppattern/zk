@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 	"gopkg.in/yaml.v3"
 )
 
@@ -50,9 +50,9 @@ type oldMeta struct {
 var migrateCmd = &cobra.Command{
 	Use:   "migrate <old-store-path>",
 	Short: "Migrate old .md file store to new SQLite format",
-	Long:  "Reads projects and notes from an old file-based zk store and imports them into the new SQLite store.",
-	Example: `  zk migrate ~/.zk-memory
-  zk migrate ~/.zk-memory --dry-run`,
+	Long:  "Reads projects and notes from an old file-based nete store and imports them into the new SQLite store.",
+	Example: `  nete migrate ~/.nete
+  nete migrate ~/.nete --dry-run`,
 	Args: cobra.ExactArgs(1),
 	RunE: runMigrate,
 }

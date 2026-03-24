@@ -6,16 +6,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 )
 
 var quickmemoCmd = &cobra.Command{
 	Use:   "quickmemo <text>",
 	Short: "Create a memo with minimal input",
 	Long:  "Shortcut for memo creation: title is auto-derived from the text (truncated at 50 chars), layer defaults to concrete, no tags required.",
-	Example: `  zk quickmemo "Redis cache hit rate is 95%"
-  zk quickmemo "This pattern keeps recurring" --note 1
-  zk quickmemo "Quick observation" --author claude`,
+	Example: `  nete quickmemo "Redis cache hit rate is 95%"
+  nete quickmemo "This pattern keeps recurring" --note 1
+  nete quickmemo "Quick observation" --author claude`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text := args[0]

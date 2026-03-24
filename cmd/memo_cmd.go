@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 )
 
 var memoCmd = &cobra.Command{
@@ -19,9 +19,9 @@ var memoCmd = &cobra.Command{
 var memoCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new memo",
-	Example: `  zk memo create --title "Discovery" --content "Found something" --tags "research,important"
-  zk memo create --title "Idea" --content "..." --note 1
-  zk memo create --title "Insight" --content "..." --layer abstract`,
+	Example: `  nete memo create --title "Discovery" --content "Found something" --tags "research,important"
+  nete memo create --title "Idea" --content "..." --note 1
+  nete memo create --title "Insight" --content "..." --layer abstract`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		title, _ := cmd.Flags().GetString("title")
 		content, _ := cmd.Flags().GetString("content")
@@ -75,8 +75,8 @@ var memoCreateCmd = &cobra.Command{
 var memoGetCmd = &cobra.Command{
 	Use:   "get <id>",
 	Short: "Get a memo by ID",
-	Example: `  zk memo get 1
-  zk memo get 1 --format md`,
+	Example: `  nete memo get 1
+  nete memo get 1 --format md`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, err := strconv.ParseInt(args[0], 10, 64)
@@ -102,9 +102,9 @@ var memoGetCmd = &cobra.Command{
 var memoListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List memos",
-	Example: `  zk memo list --note 1
-  zk memo list --format md
-  zk memo list --layer abstract`,
+	Example: `  nete memo list --note 1
+  nete memo list --format md
+  nete memo list --layer abstract`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		layerFilter, _ := cmd.Flags().GetString("layer")
 
@@ -136,8 +136,8 @@ var memoListCmd = &cobra.Command{
 var memoUpdateCmd = &cobra.Command{
 	Use:   "update <id>",
 	Short: "Update an existing memo",
-	Example: `  zk memo update 1 --title "New Title"
-  zk memo update 1 --tags "new-tag" --status archived`,
+	Example: `  nete memo update 1 --title "New Title"
+  nete memo update 1 --tags "new-tag" --status archived`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, err := strconv.ParseInt(args[0], 10, 64)
@@ -186,7 +186,7 @@ var memoUpdateCmd = &cobra.Command{
 var memoDeleteCmd = &cobra.Command{
 	Use:   "delete <id>",
 	Short: "Delete a memo by ID",
-	Example: `  zk memo delete 1`,
+	Example: `  nete memo delete 1`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, err := strconv.ParseInt(args[0], 10, 64)
@@ -212,7 +212,7 @@ var memoDeleteCmd = &cobra.Command{
 var memoMoveCmd = &cobra.Command{
 	Use:   "move <memoID> <targetNoteID>",
 	Short: "Move a memo to a different note",
-	Example: `  zk memo move 1 2`,
+	Example: `  nete memo move 1 2`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		memoID, err := strconv.ParseInt(args[0], 10, 64)
@@ -242,9 +242,9 @@ var memoMoveCmd = &cobra.Command{
 var memoRandomCmd = &cobra.Command{
 	Use:   "random",
 	Short: "Pick a random memo from all memos across every note",
-	Example: `  zk memo random
-  zk memo random --layer abstract
-  zk memo random --format md`,
+	Example: `  nete memo random
+  nete memo random --layer abstract
+  nete memo random --format md`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		layerFilter, _ := cmd.Flags().GetString("layer")
 

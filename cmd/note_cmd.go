@@ -29,7 +29,7 @@ var noteCmd = &cobra.Command{
 var noteCreateCmd = &cobra.Command{
 	Use:   "create <name>",
 	Short: "Create a new note",
-	Example: `  zk note create "my-research" --description "Research note"`,
+	Example: `  nete note create "my-research" --description "Research note"`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
@@ -53,8 +53,8 @@ var noteCreateCmd = &cobra.Command{
 var noteListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all notes",
-	Example: `  zk note list
-  zk note list --format md`,
+	Example: `  nete note list
+  nete note list --format md`,
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := openStore(cmd)
@@ -75,8 +75,8 @@ var noteListCmd = &cobra.Command{
 var noteGetCmd = &cobra.Command{
 	Use:   "get <id>",
 	Short: "Get a note by ID",
-	Example: `  zk note get 1
-  zk note get 1 --format md`,
+	Example: `  nete note get 1
+  nete note get 1 --format md`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, err := strconv.ParseInt(args[0], 10, 64)
@@ -145,7 +145,7 @@ var noteGetCmd = &cobra.Command{
 var noteDeleteCmd = &cobra.Command{
 	Use:   "delete <id>",
 	Short: "Delete a note by ID",
-	Example: `  zk note delete 1`,
+	Example: `  nete note delete 1`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, err := strconv.ParseInt(args[0], 10, 64)

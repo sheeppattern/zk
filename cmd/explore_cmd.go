@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
-	"github.com/sheeppattern/zk/internal/store"
+	"github.com/sheeppattern/nete/internal/model"
+	"github.com/sheeppattern/nete/internal/store"
 )
 
 // ExploreNode represents a memo in the exploration graph.
@@ -44,9 +44,9 @@ var exploreCmd = &cobra.Command{
 	Use:   "explore <memoID>",
 	Short: "Output structured navigation context for a memo",
 	Long:  "Explore the link neighborhood of a memo, showing outgoing links, incoming backlinks, and optionally deeper neighbors via BFS.",
-	Example: `  zk explore 1
-  zk explore 1 --depth 2 --include-content --format json
-  zk explore 1 --depth 3 --format md`,
+	Example: `  nete explore 1
+  nete explore 1 --depth 2 --include-content --format json
+  nete explore 1 --depth 3 --format md`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		memoID, err := strconv.ParseInt(args[0], 10, 64)
@@ -255,7 +255,7 @@ func printExploreMD(result ExploreResult) error {
 		fmt.Fprintln(&b, "_No connected memos to explore._")
 	} else {
 		for id := range connectedIDs {
-			fmt.Fprintf(&b, "- `zk explore %d`\n", id)
+			fmt.Fprintf(&b, "- `nete explore %d`\n", id)
 		}
 	}
 

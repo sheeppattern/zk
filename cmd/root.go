@@ -7,8 +7,8 @@ import (
 	"strconv"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/output"
-	"github.com/sheeppattern/zk/internal/store"
+	"github.com/sheeppattern/nete/internal/output"
+	"github.com/sheeppattern/nete/internal/store"
 )
 
 // Version is set at build time via -ldflags.
@@ -22,7 +22,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "zk",
+	Use:   "nete",
 	Short: "Zettelkasten memory CLI for AI agents",
 	Long:  "A Zettelkasten-style memory system designed for AI agents to store, link, and retrieve knowledge memos.",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {},
@@ -60,12 +60,12 @@ func Execute() {
 }
 
 // getStorePath returns the store directory path by checking:
-// 1) --path flag value, 2) ZKMEMORY_PATH env var, 3) default ~/.zk-memory.
+// 1) --path flag value, 2) NETE_PATH env var, 3) default ~/.nete.
 func getStorePath(cmd *cobra.Command) string {
 	if p, _ := cmd.Flags().GetString("path"); p != "" {
 		return p
 	}
-	if env := os.Getenv("ZKMEMORY_PATH"); env != "" {
+	if env := os.Getenv("NETE_PATH"); env != "" {
 		return env
 	}
 	home, err := os.UserHomeDir()
@@ -73,7 +73,7 @@ func getStorePath(cmd *cobra.Command) string {
 		fmt.Fprintln(os.Stderr, "cannot determine home directory:", err)
 		os.Exit(1)
 	}
-	return filepath.Join(home, ".zk-memory")
+	return filepath.Join(home, ".nete")
 }
 
 // getDBPath returns the path to store.db file.

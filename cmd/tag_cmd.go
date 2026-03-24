@@ -19,7 +19,7 @@ var tagCmd = &cobra.Command{
 var tagAddCmd = &cobra.Command{
 	Use:   "add <memoID> <tag1> [tag2...]",
 	Short: "Add tags to a memo",
-	Example: `  zk tag add 1 important urgent`,
+	Example: `  nete tag add 1 important urgent`,
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		memoID, err := strconv.ParseInt(args[0], 10, 64)
@@ -61,7 +61,7 @@ var tagAddCmd = &cobra.Command{
 var tagRemoveCmd = &cobra.Command{
 	Use:   "remove <memoID> <tag1> [tag2...]",
 	Short: "Remove tags from a memo",
-	Example: `  zk tag remove 1 draft`,
+	Example: `  nete tag remove 1 draft`,
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		memoID, err := strconv.ParseInt(args[0], 10, 64)
@@ -105,7 +105,7 @@ var tagRemoveCmd = &cobra.Command{
 var tagReplaceCmd = &cobra.Command{
 	Use:   "replace <oldTag> <newTag>",
 	Short: "Replace a tag across all memos",
-	Example: `  zk tag replace old-tag new-tag`,
+	Example: `  nete tag replace old-tag new-tag`,
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		oldTag := args[0]
@@ -160,7 +160,7 @@ var tagReplaceCmd = &cobra.Command{
 var tagListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all unique tags",
-	Example: `  zk tag list`,
+	Example: `  nete tag list`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := openStore(cmd)
 		if err != nil {
@@ -208,7 +208,7 @@ var tagListCmd = &cobra.Command{
 var tagBatchAddCmd = &cobra.Command{
 	Use:   "batch-add <tag> <memoID1> [memoID2...]",
 	Short: "Add a tag to multiple memos",
-	Example: `  zk tag batch-add reviewed 1 2 3`,
+	Example: `  nete tag batch-add reviewed 1 2 3`,
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tag := args[0]

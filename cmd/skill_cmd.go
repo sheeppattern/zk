@@ -11,7 +11,7 @@ import (
 
 var skillCmd = &cobra.Command{
 	Use:   "skill",
-	Short: "Manage zk skill definitions for AI coding agents",
+	Short: "Manage nete skill definitions for AI coding agents",
 }
 
 var skillGenerateCmd = &cobra.Command{
@@ -21,10 +21,10 @@ var skillGenerateCmd = &cobra.Command{
 
 Global files (Claude, Gemini, Codex) are always generated at ~/.
 Project files (Cursor, Copilot, Windsurf) require --project-dir.`,
-	Example: `  zk skill generate
-  zk skill generate --project-dir .
-  zk skill generate --agents claude,cursor --project-dir .
-  zk skill generate --global-only`,
+	Example: `  nete skill generate
+  nete skill generate --project-dir .
+  nete skill generate --agents claude,cursor --project-dir .
+  nete skill generate --global-only`,
 	RunE: runSkillGenerate,
 }
 
@@ -149,12 +149,12 @@ func writeFile(path string, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-// Claude Code: ~/.claude/skills/zk/SKILL.md + references/domain-guide.md
+// Claude Code: ~/.claude/skills/nete/SKILL.md + references/domain-guide.md
 func writeClaudeSkill(home string) (string, error) {
-	dir := filepath.Join(home, ".claude", "skills", "zk")
+	dir := filepath.Join(home, ".claude", "skills", "nete")
 	skillPath := filepath.Join(dir, "SKILL.md")
 
-	content := claudeFrontmatter + zkInstructionContent
+	content := claudeFrontmatter + neteInstructionContent
 	if err := writeFile(skillPath, content); err != nil {
 		return "", err
 	}
@@ -167,38 +167,38 @@ func writeClaudeSkill(home string) (string, error) {
 	return skillPath, nil
 }
 
-// Gemini CLI: ~/.gemini/instructions/zk.md
+// Gemini CLI: ~/.gemini/instructions/nete.md
 func writeGeminiInstruction(home string) (string, error) {
-	path := filepath.Join(home, ".gemini", "instructions", "zk.md")
-	if err := writeFile(path, zkInstructionContent); err != nil {
+	path := filepath.Join(home, ".gemini", "instructions", "nete.md")
+	if err := writeFile(path, neteInstructionContent); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
-// Codex CLI: ~/.codex/instructions/zk.md
+// Codex CLI: ~/.codex/instructions/nete.md
 func writeCodexInstruction(home string) (string, error) {
-	path := filepath.Join(home, ".codex", "instructions", "zk.md")
-	if err := writeFile(path, zkInstructionContent); err != nil {
+	path := filepath.Join(home, ".codex", "instructions", "nete.md")
+	if err := writeFile(path, neteInstructionContent); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
-// Agent Skills Standard (agentskills.io): ~/.agents/skills/zk/SKILL.md (global)
+// Agent Skills Standard (agentskills.io): ~/.agents/skills/nete/SKILL.md (global)
 func writeAgentSkillsGlobal(home string) (string, error) {
-	return writeAgentSkillsDir(filepath.Join(home, ".agents", "skills", "zk"))
+	return writeAgentSkillsDir(filepath.Join(home, ".agents", "skills", "nete"))
 }
 
-// Agent Skills Standard (agentskills.io): {projectDir}/.agents/skills/zk/SKILL.md (project)
+// Agent Skills Standard (agentskills.io): {projectDir}/.agents/skills/nete/SKILL.md (project)
 func writeAgentSkillsProject(projectDir string) (string, error) {
-	return writeAgentSkillsDir(filepath.Join(projectDir, ".agents", "skills", "zk"))
+	return writeAgentSkillsDir(filepath.Join(projectDir, ".agents", "skills", "nete"))
 }
 
 func writeAgentSkillsDir(dir string) (string, error) {
 	skillPath := filepath.Join(dir, "SKILL.md")
 
-	content := claudeFrontmatter + zkInstructionContent
+	content := claudeFrontmatter + neteInstructionContent
 	if err := writeFile(skillPath, content); err != nil {
 		return "", err
 	}
@@ -211,10 +211,10 @@ func writeAgentSkillsDir(dir string) (string, error) {
 	return skillPath, nil
 }
 
-// Cursor: {projectDir}/.cursor/rules/zk.mdc
+// Cursor: {projectDir}/.cursor/rules/nete.mdc
 func writeCursorRule(projectDir string) (string, error) {
-	path := filepath.Join(projectDir, ".cursor", "rules", "zk.mdc")
-	content := cursorFrontmatter + zkInstructionContent
+	path := filepath.Join(projectDir, ".cursor", "rules", "nete.mdc")
+	content := cursorFrontmatter + neteInstructionContent
 	if err := writeFile(path, content); err != nil {
 		return "", err
 	}
@@ -224,16 +224,16 @@ func writeCursorRule(projectDir string) (string, error) {
 // GitHub Copilot: {projectDir}/.github/copilot-instructions.md
 func writeCopilotInstruction(projectDir string) (string, error) {
 	path := filepath.Join(projectDir, ".github", "copilot-instructions.md")
-	if err := writeFile(path, zkInstructionContent); err != nil {
+	if err := writeFile(path, neteInstructionContent); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
-// Windsurf: {projectDir}/.windsurf/rules/zk.md
+// Windsurf: {projectDir}/.windsurf/rules/nete.md
 func writeWindsurfRule(projectDir string) (string, error) {
-	path := filepath.Join(projectDir, ".windsurf", "rules", "zk.md")
-	content := windsurfFrontmatter + zkInstructionContent
+	path := filepath.Join(projectDir, ".windsurf", "rules", "nete.md")
+	content := windsurfFrontmatter + neteInstructionContent
 	if err := writeFile(path, content); err != nil {
 		return "", err
 	}
@@ -243,14 +243,14 @@ func writeWindsurfRule(projectDir string) (string, error) {
 // --- Frontmatter constants ---
 
 const claudeFrontmatter = `---
-name: zk
+name: nete
 description: "Zettelkasten memory CLI — AI 에이전트용 지식 관리 도구. SQLite + FTS5 풀텍스트 검색, 메모 CRUD, 관계 타입+가중치 링크, 노트 범위 관리, 웹 GUI를 지원합니다."
 ---
 
 `
 
 const cursorFrontmatter = `---
-description: "zk - Zettelkasten memory CLI for AI agents. SQLite + FTS5 search, memo CRUD, typed+weighted links, note scoping, web GUI."
+description: "nete - Zettelkasten memory CLI for AI agents. SQLite + FTS5 search, memo CRUD, typed+weighted links, note scoping, web GUI."
 alwaysApply: true
 ---
 
@@ -268,21 +268,21 @@ const bt = "```"
 
 // --- Shared content (frontmatter-free, used by all agents) ---
 
-var zkInstructionContent = `# Zettelkasten Memory CLI (zk)
+var neteInstructionContent = `# Zettelkasten Memory CLI (nete)
 
 > AI 에이전트가 지식을 구조화하고 연결하는 CLI 도구.
 > A CLI tool for AI agents to structure and connect knowledge.
 
-## When to Use zk
+## When to Use nete
 
-You should **proactively** use zk whenever you:
+You should **proactively** use nete whenever you:
 - Learn something new during a task (create a concrete memo)
 - Notice a pattern, tension, or contradiction (create an abstract memo)
 - Make a decision or change your understanding (link with supports/contradicts/replaces/invalidates)
 - Finish a research or analysis task (summarize findings as memos)
 - Start a new session and need context (search/explore existing memos)
 
-**Do not wait to be asked.** If you are thinking about something worth remembering, record it. The value of zk comes from habitual use, not occasional use.
+**Do not wait to be asked.** If you are thinking about something worth remembering, record it. The value of nete comes from habitual use, not occasional use.
 
 ## Concepts
 
@@ -303,21 +303,21 @@ You should **proactively** use zk whenever you:
 ## Init & Config
 
 ` + bt + `bash
-zk init                              # Initialize store (SQLite)
-zk init --path /custom               # Custom path
-zk config show                       # Show current config
-zk config set default_note 1         # Set default note scope
-zk config set default_format yaml    # Set default output format
-zk config set default_author claude  # Set default memo author
+nete init                              # Initialize store (SQLite)
+nete init --path /custom               # Custom path
+nete config show                       # Show current config
+nete config set default_note 1         # Set default note scope
+nete config set default_format yaml    # Set default output format
+nete config set default_author claude  # Set default memo author
 ` + bt + `
 
 ## Notes (Containers)
 
 ` + bt + `bash
-zk note create <name> --description "desc"
-zk note list
-zk note get <id>       # Includes memo count, link count
-zk note delete <id>
+nete note create <name> --description "desc"
+nete note list
+nete note get <id>       # Includes memo count, link count
+nete note delete <id>
 ` + bt + `
 
 ## Memos (Concrete/Abstract Layers)
@@ -328,26 +328,26 @@ Every memo belongs to a layer:
 
 ` + bt + `bash
 # Concrete memos (facts)
-zk memo create --title "Title" --content "Body" --tags "t1,t2" --layer concrete --note <id>
+nete memo create --title "Title" --content "Body" --tags "t1,t2" --layer concrete --note <id>
 
 # With summary and source
-zk memo create --title "Title" --content "Body" --summary "Brief" --note <id>
+nete memo create --title "Title" --content "Body" --summary "Brief" --note <id>
 
 # Abstract memos (insights)
-zk memo create --title "Tension: X vs Y" --content "..." --layer abstract --note <id>
+nete memo create --title "Tension: X vs Y" --content "..." --layer abstract --note <id>
 
-zk memo get <memoID>
-zk memo list --note <id>
-zk memo list --layer abstract --note <id>
-zk memo update <memoID> --title "New"
-zk memo update <memoID> --summary "Updated summary"
-zk memo delete <memoID>
-zk memo move <memoID> <targetNoteID>
-zk memo random                        # Random memo from all notes
-zk memo random --layer abstract       # Random abstract memo
+nete memo get <memoID>
+nete memo list --note <id>
+nete memo list --layer abstract --note <id>
+nete memo update <memoID> --title "New"
+nete memo update <memoID> --summary "Updated summary"
+nete memo delete <memoID>
+nete memo move <memoID> <targetNoteID>
+nete memo random                        # Random memo from all notes
+nete memo random --layer abstract       # Random abstract memo
 
 # Author tracking
-zk memo create --title "Title" --content "..." --author claude --note <id>
+nete memo create --title "Title" --content "..." --author claude --note <id>
 ` + bt + `
 
 ## Quick Memo
@@ -355,9 +355,9 @@ zk memo create --title "Title" --content "..." --author claude --note <id>
 Minimal memo creation from a single text argument:
 
 ` + bt + `bash
-zk quickmemo "My quick thought here"
-zk quickmemo "Observation about X" --note <id>
-zk quickmemo "Found a pattern" --author claude
+nete quickmemo "My quick thought here"
+nete quickmemo "Observation about X" --note <id>
+nete quickmemo "Found a pattern" --author claude
 ` + bt + `
 
 - Title: auto-derived (first 50 chars, truncated at word boundary)
@@ -369,12 +369,12 @@ zk quickmemo "Found a pattern" --author claude
 Links are stored once and queried both directions (no bidirectional duplication).
 
 ` + bt + `bash
-zk link add <src> <tgt> --type supports --weight 0.8
-zk link remove <src> <tgt> --type supports
-zk link list <memoID>                              # Show outgoing + incoming
-zk link list <memoID> --type supports              # Filter by relation type
-zk link list <memoID> --sort-weight                # Sort by weight desc
-zk link list <memoID> --depth 3                    # BFS traversal (max depth 5)
+nete link add <src> <tgt> --type supports --weight 0.8
+nete link remove <src> <tgt> --type supports
+nete link list <memoID>                              # Show outgoing + incoming
+nete link list <memoID> --type supports              # Filter by relation type
+nete link list <memoID> --sort-weight                # Sort by weight desc
+nete link list <memoID> --depth 3                    # BFS traversal (max depth 5)
 ` + bt + `
 
 Relation types: related (default), supports, contradicts, extends, causes, example-of, abstracts, grounds, replaces, invalidates
@@ -384,12 +384,12 @@ Relation types: related (default), supports, contradicts, extends, causes, examp
 Powered by SQLite FTS5 with BM25 ranking. Searches title, content, tags, and summary.
 
 ` + bt + `bash
-zk search <query>
-zk search "Redis" --tags "cache"
-zk search "auth" --sort relevance                  # relevance | created | updated
-zk search "tension" --layer abstract --note <id>
-zk search "pattern" --author claude
-zk search "data" --created-after 2026-01-01 --created-before 2026-12-31
+nete search <query>
+nete search "Redis" --tags "cache"
+nete search "auth" --sort relevance                  # relevance | created | updated
+nete search "tension" --layer abstract --note <id>
+nete search "pattern" --author claude
+nete search "data" --created-after 2026-01-01 --created-before 2026-12-31
 ` + bt + `
 
 FTS5 syntax: wrap in quotes for phrase match. Prefix matching with *.
@@ -397,18 +397,18 @@ FTS5 syntax: wrap in quotes for phrase match. Prefix matching with *.
 ## Tags
 
 ` + bt + `bash
-zk tag add <memoID> <tag1> [tag2...]
-zk tag remove <memoID> <tag1> [tag2...]
-zk tag replace <oldTag> <newTag> --note <id>
-zk tag list --note <id>
-zk tag batch-add <tag> <memoID1> [memoID2...]
+nete tag add <memoID> <tag1> [tag2...]
+nete tag remove <memoID> <tag1> [tag2...]
+nete tag replace <oldTag> <newTag> --note <id>
+nete tag list --note <id>
+nete tag batch-add <tag> <memoID1> [memoID2...]
 ` + bt + `
 
 ## Diagnostics
 
 ` + bt + `bash
-zk diagnose
-zk diagnose --format md
+nete diagnose
+nete diagnose --format md
 ` + bt + `
 
 Checks: orphan memos, invalid relation types, out-of-range weights.
@@ -416,17 +416,17 @@ Checks: orphan memos, invalid relation types, out-of-range weights.
 ## Export & Import
 
 ` + bt + `bash
-zk export --note <id> --format yaml --output backup.yaml
-zk import --file backup.yaml --note <id>
+nete export --note <id> --format yaml --output backup.yaml
+nete import --file backup.yaml --note <id>
 ` + bt + `
 
 ## Reflect — Insight Engine
 
 ` + bt + `bash
-zk reflect --note <id>                 # Show insight suggestions
-zk reflect --note <id> --format md     # Markdown report
-zk reflect --note <id> --apply         # Auto-create suggested abstract memos
-zk reflect --note <id> --suggest-links # Suggest missing links
+nete reflect --note <id>                 # Show insight suggestions
+nete reflect --note <id> --format md     # Markdown report
+nete reflect --note <id> --apply         # Auto-create suggested abstract memos
+nete reflect --note <id> --suggest-links # Suggest missing links
 ` + bt + `
 
 Detects: tensions, hubs without abstraction, orphan memos, low abstraction ratio, similar unlinked memos.
@@ -434,17 +434,17 @@ Detects: tensions, hubs without abstraction, orphan memos, low abstraction ratio
 ## Graph & Explore
 
 ` + bt + `bash
-zk graph --note <id>                               # Mermaid graph
-zk graph --note <id> --format-graph dot            # DOT format
-zk explore <memoID> --depth 2                      # Show connections
-zk explore <memoID> --include-content --format md  # Full detail
+nete graph --note <id>                               # Mermaid graph
+nete graph --note <id> --format-graph dot            # DOT format
+nete explore <memoID> --depth 2                      # Show connections
+nete explore <memoID> --include-content --format md  # Full detail
 ` + bt + `
 
 ## Web GUI
 
 ` + bt + `bash
-zk serve                               # http://127.0.0.1:8080
-zk serve --addr :3000                  # Custom port
+nete serve                               # http://127.0.0.1:8080
+nete serve --addr :3000                  # Custom port
 ` + bt + `
 
 Features: memo editor (title, summary, content, tags, status, source), incoming/outgoing link panels, neighborhood graph minimap, FTS5 search, note/memo tree explorer.
@@ -452,45 +452,76 @@ Features: memo editor (title, summary, content, tags, status, source), incoming/
 ## Schema Introspection
 
 ` + bt + `bash
-zk schema              # List all resources
-zk schema memo         # Memo field details
-zk schema link         # Link field details
-zk schema relation-types
+nete schema              # List all resources
+nete schema memo         # Memo field details
+nete schema link         # Link field details
+nete schema relation-types
 ` + bt + `
 
 ## Agent Workflows
 
 ### 1. Knowledge Accumulation
 ` + bt + `bash
-zk init
-zk note create "research" --description "Research project"
-zk memo create --title "Finding 1" --content "..." --tags "finding" --note 1
-zk memo create --title "Finding 2" --content "..." --tags "finding" --note 1
-zk link add 1 2 --type supports --weight 0.9
+nete init
+nete note create "research" --description "Research project"
+nete memo create --title "Finding 1" --content "..." --tags "finding" --note 1
+nete memo create --title "Finding 2" --content "..." --tags "finding" --note 1
+nete link add 1 2 --type supports --weight 0.9
 ` + bt + `
 
 ### 2. Insight Derivation
 ` + bt + `bash
-zk reflect --note 1 --format md       # Check what insights are missing
-zk reflect --note 1 --apply           # Auto-create abstract memos
-zk memo create --title "Growth vs Retention" --content "..." --layer abstract --note 1
-zk link add 1 3 --type abstracts --weight 0.8
+nete reflect --note 1 --format md       # Check what insights are missing
+nete reflect --note 1 --apply           # Auto-create abstract memos
+nete memo create --title "Growth vs Retention" --content "..." --layer abstract --note 1
+nete link add 1 3 --type abstracts --weight 0.8
 ` + bt + `
 
 ### 3. Knowledge Exploration
 ` + bt + `bash
-zk search "keyword" --note 1
-zk search "tension" --layer abstract
-zk link list 1 --depth 2
-zk memo get 2
+nete search "keyword" --note 1
+nete search "tension" --layer abstract
+nete link list 1 --depth 2
+nete memo get 2
 ` + bt + `
 
 ### 4. Maintenance
 ` + bt + `bash
-zk diagnose
-zk reflect --note 1
-zk export --note 1 --output snapshot.yaml
+nete diagnose
+nete reflect --note 1
+nete export --note 1 --output snapshot.yaml
 ` + bt + `
+
+### 5. Serendipity — Cross-Pollination Discovery
+` + bt + `bash
+# Step 1: Pick 2–5 random memos (repeat nete memo random multiple times)
+nete memo random --format json
+nete memo random --format json
+nete memo random --format json
+
+# Step 2: Read each memo's full content
+nete memo get <id1> --format md
+nete memo get <id2> --format md
+nete memo get <id3> --format md
+
+# Step 3: Analyze & link (you, the agent, do this)
+# - Find non-obvious connections between the random memos
+# - Propose relation type and weight for each connection
+# - Delegate logical validation to a sub-agent if available; otherwise self-review
+# - Create links for validated connections only
+
+nete link add <id1> <id2> --type related --weight 0.6
+nete memo create --title "Serendipity: X connects to Y" \
+  --content "Found via random exploration: ..." --layer abstract
+` + bt + `
+
+**Serendipity workflow rules:**
+- Pick 2–5 memos randomly across ALL notes (not limited to one note)
+- Look for hidden patterns, analogies, contradictions, or causal chains
+- Use a sub-agent (if available) to verify logical coherence before creating links
+- If no sub-agent, self-review: ask "Would a skeptic accept this connection?"
+- Only create links when the connection is defensible — skip forced associations
+- Tag serendipity-born memos with ` + "`serendipity`" + ` for traceability
 
 ## Storage
 
@@ -507,7 +538,7 @@ Tables: notes, memos, memos_fts (FTS5), links, trash, config.
 - IDs: integer auto-increment (1, 2, 3...)
 - Links: single-stored, queried both directions (no duplication)
 - Memos support: title, content, tags, layer, summary, author, source, status
-- Use ` + "`zk quickmemo`" + ` for fast capture
+- Use ` + "`nete quickmemo`" + ` for fast capture
 - Without --note, memos go to global scope (note_id=0)
 - Deleted memos move to trash (recoverable)
 - Pipeline-safe: stdout = data, stderr = status/errors
@@ -516,7 +547,7 @@ Tables: notes, memos, memos_fts (FTS5), links, trash, config.
 
 var domainGuideContent = `# Zettelkasten Domain Guide
 
-> Domain knowledge and best practices for the zk memory CLI.
+> Domain knowledge and best practices for the nete memory CLI.
 
 ## Core Principles
 
@@ -530,10 +561,10 @@ Memos belong to one of two layers:
 - **concrete**: Facts, observations, metrics, specifications, data points
 - **abstract**: Patterns, tensions, questions, insights, strategic decisions
 
-The power of zk comes from the interplay between layers:
+The power of nete comes from the interplay between layers:
 - Concrete memos accumulate raw knowledge
 - Abstract memos emerge when you notice patterns, contradictions, or questions
-- Use ` + "`zk reflect`" + ` to automatically detect where abstract memos are needed
+- Use ` + "`nete reflect`" + ` to automatically detect where abstract memos are needed
 
 ### Links
 - Links are stored once and queried both directions
@@ -566,28 +597,28 @@ The power of zk comes from the interplay between layers:
 ## Best Practices
 
 1. **Start concrete, derive abstract**: Record facts first, then notice patterns
-2. **Use ` + "`zk reflect`" + ` regularly**: Detects tensions, orphans, and hubs needing abstraction
+2. **Use ` + "`nete reflect`" + ` regularly**: Detects tensions, orphans, and hubs needing abstraction
 3. **Name abstract memos as questions**: "X vs Y — what should we choose?"
 4. **Isolate context with notes**: Group related memos in the same note
 5. **Cross-cut with tags**: Use tags for themes that span notes
-6. **Run ` + "`zk diagnose`" + ` periodically**: Find orphan memos and invalid links
-7. **Backup with ` + "`zk export`" + `**: Regular snapshots prevent data loss
+6. **Run ` + "`nete diagnose`" + ` periodically**: Find orphan memos and invalid links
+7. **Backup with ` + "`nete export`" + `**: Regular snapshots prevent data loss
 8. **Use specific relation types**: Don't just use "related" — express the actual relationship
 9. **Leverage FTS5 search**: Combine --tags, --layer, --author for precise queries
 10. **Write summaries**: Memos over 500 chars benefit from a --summary for quick scanning
-11. **Use ` + "`zk quickmemo`" + `**: Fast capture when structure can wait
+11. **Use ` + "`nete quickmemo`" + `**: Fast capture when structure can wait
 
 ## Proactive Usage Mindset
 
-zk is not a passive archive — it is an active thinking tool. As an AI agent:
+nete is not a passive archive — it is an active thinking tool. As an AI agent:
 - **Record as you go**: Discover → write it down immediately
 - **Link aggressively**: Every memo should connect to at least one other
-- **Challenge yourself**: After 3+ concrete memos, run ` + "`zk reflect`" + `
+- **Challenge yourself**: After 3+ concrete memos, run ` + "`nete reflect`" + `
 - **Use contradicts liberally**: Tension signals where thinking is needed
 - **Update, don't append**: New conclusion? New memo + replaces/invalidates link
 - **Summarize proactively**: >500 chars → add --summary
-- **Set your author**: ` + "`zk config set default_author <name>`" + `
-- **Discover hidden links**: ` + "`zk reflect --suggest-links`" + ` periodically
+- **Set your author**: ` + "`nete config set default_author <name>`" + `
+- **Discover hidden links**: ` + "`nete reflect --suggest-links`" + ` periodically
 
 ## Anti-Patterns
 

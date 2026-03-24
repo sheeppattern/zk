@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 	"gopkg.in/yaml.v3"
 )
 
@@ -48,8 +48,8 @@ var exportCmd = &cobra.Command{
 	Use:   "export",
 	Short: "Export memos to a file",
 	Long:  "Export memos as JSON or YAML. Exports all memos by default, or filter by --note.",
-	Example: `  zk export --note 1 --format yaml --output backup.yaml
-  zk export`,
+	Example: `  nete export --note 1 --format yaml --output backup.yaml
+  nete export`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		outputPath, _ := cmd.Flags().GetString("output")
 
@@ -123,8 +123,8 @@ var importCmd = &cobra.Command{
 	Use:   "import",
 	Short: "Import memos from a file",
 	Long:  "Import memos from a JSON or YAML export file.",
-	Example: `  zk import --file backup.yaml --note 1
-  zk import --file data.json`,
+	Example: `  nete import --file backup.yaml --note 1
+  nete import --file data.json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		filePath, _ := cmd.Flags().GetString("file")
 

@@ -19,9 +19,9 @@ import (
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Show zk version information",
-	Example: `  zk version
-  zk version --format json`,
+	Short: "Show nete version information",
+	Example: `  nete version
+  nete version --format json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		info := struct {
 			Version  string `json:"version" yaml:"version"`
@@ -42,7 +42,7 @@ var versionCmd = &cobra.Command{
 		case "yaml":
 			return f.PrintYAML(info)
 		default:
-			fmt.Fprintf(os.Stdout, "zk %s (%s/%s, %s)\n", info.Version, info.OS, info.Arch, info.GoVer)
+			fmt.Fprintf(os.Stdout, "nete %s (%s/%s, %s)\n", info.Version, info.OS, info.Arch, info.GoVer)
 			return nil
 		}
 	},
@@ -60,14 +60,14 @@ type ghAsset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-const ghReleaseAPI = "https://api.github.com/repos/sheeppattern/zk/releases/latest"
+const ghReleaseAPI = "https://api.github.com/repos/sheeppattern/nete/releases/latest"
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update zk to the latest version",
+	Short: "Update nete to the latest version",
 	Long:  "Downloads the latest release from GitHub and replaces the current binary.",
-	Example: `  zk update
-  zk update --check`,
+	Example: `  nete update
+  nete update --check`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		checkOnly, _ := cmd.Flags().GetBool("check")
 
@@ -89,12 +89,12 @@ var updateCmd = &cobra.Command{
 		statusf("new version available: v%s → v%s", current, latest)
 
 		if checkOnly {
-			statusf("run 'zk update' to install")
+			statusf("run 'nete update' to install")
 			return nil
 		}
 
 		// Find matching asset for current OS/arch.
-		assetName := fmt.Sprintf("zk_%s_%s", runtime.GOOS, runtime.GOARCH)
+		assetName := fmt.Sprintf("nete_%s_%s", runtime.GOOS, runtime.GOARCH)
 		if runtime.GOOS == "windows" {
 			assetName += ".exe"
 		}
@@ -109,7 +109,7 @@ var updateCmd = &cobra.Command{
 
 		if downloadURL == "" {
 			statusf("no pre-built binary found for %s/%s", runtime.GOOS, runtime.GOARCH)
-			statusf("install manually: go install github.com/sheeppattern/zk@v%s", latest)
+			statusf("install manually: go install github.com/sheeppattern/nete@v%s", latest)
 			return nil
 		}
 
@@ -126,7 +126,7 @@ var updateCmd = &cobra.Command{
 			return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
 		}
 
-		tmpFile, err := os.CreateTemp("", "zk-update-*")
+		tmpFile, err := os.CreateTemp("", "nete-update-*")
 		if err != nil {
 			return fmt.Errorf("create temp file: %w", err)
 		}
@@ -194,10 +194,10 @@ var updateCmd = &cobra.Command{
 
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
-	Short: "Remove zk binary and optionally clean up data",
-	Long:  "Removes the zk binary. Use --purge to also delete the store and agent skill files.",
-	Example: `  zk uninstall
-  zk uninstall --purge`,
+	Short: "Remove nete binary and optionally clean up data",
+	Long:  "Removes the nete binary. Use --purge to also delete the store and agent skill files.",
+	Example: `  nete uninstall
+  nete uninstall --purge`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		purge, _ := cmd.Flags().GetBool("purge")
 
@@ -216,9 +216,9 @@ var uninstallCmd = &cobra.Command{
 
 			// Remove agent skill files (global).
 			agentPaths := []string{
-				filepath.Join(home, ".claude", "skills", "zk"),
-				filepath.Join(home, ".gemini", "instructions", "zk.md"),
-				filepath.Join(home, ".codex", "instructions", "zk.md"),
+				filepath.Join(home, ".claude", "skills", "nete"),
+				filepath.Join(home, ".gemini", "instructions", "nete.md"),
+				filepath.Join(home, ".codex", "instructions", "nete.md"),
 			}
 			for _, p := range agentPaths {
 				if _, err := os.Stat(p); err == nil {
@@ -254,7 +254,7 @@ var uninstallCmd = &cobra.Command{
 			}
 		}
 
-		statusf("zk uninstalled successfully")
+		statusf("nete uninstalled successfully")
 		return nil
 	},
 }

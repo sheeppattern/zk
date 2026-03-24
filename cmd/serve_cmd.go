@@ -17,9 +17,9 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start web GUI for browsing and editing the knowledge graph",
 	Long:  "Launch a local web server that provides an interface for exploring memos, editing content, and visualizing the knowledge graph.",
-	Example: `  zk serve
-  zk serve --addr :3000
-  zk serve --addr 127.0.0.1:8080`,
+	Example: `  nete serve
+  nete serve --addr :3000
+  nete serve --addr 127.0.0.1:8080`,
 	RunE: runServe,
 }
 
@@ -57,9 +57,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	handler := maxBodyMiddleware(mux)
 
 	if strings.HasPrefix(addr, ":") {
-		statusf("zk web GUI at http://localhost%s", addr)
+		statusf("nete web GUI at http://localhost%s", addr)
 	} else {
-		statusf("zk web GUI at http://%s", addr)
+		statusf("nete web GUI at http://%s", addr)
 	}
 	statusf("press Ctrl+C to stop")
 

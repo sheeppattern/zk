@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/sheeppattern/zk/internal/model"
-	"github.com/sheeppattern/zk/internal/store"
+	"github.com/sheeppattern/nete/internal/model"
+	"github.com/sheeppattern/nete/internal/store"
 )
 
 type serveHandler struct {

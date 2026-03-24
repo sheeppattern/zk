@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sheeppattern/zk/internal/model"
+	"github.com/sheeppattern/nete/internal/model"
 	_ "modernc.org/sqlite"
 )
 

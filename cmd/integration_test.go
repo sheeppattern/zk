@@ -15,14 +15,14 @@ import (
 var zkBinary string
 
 func TestMain(m *testing.M) {
-	tmp, err := os.MkdirTemp("", "zk-test-bin-*")
+	tmp, err := os.MkdirTemp("", "nete-test-bin-*")
 	if err != nil {
 		panic("failed to create temp dir for binary: " + err.Error())
 	}
 
-	binName := "zk"
+	binName := "nete"
 	if runtime.GOOS == "windows" {
-		binName = "zk.exe"
+		binName = "nete.exe"
 	}
 	zkBinary = filepath.Join(tmp, binName)
 
@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		panic("failed to build zk: " + err.Error())
+		panic("failed to build nete: " + err.Error())
 	}
 
 	code := m.Run()
@@ -41,11 +41,11 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// runZK executes the zk binary with ZKMEMORY_PATH pointing to storeDir.
+// runZK executes the nete binary with NETE_PATH pointing to storeDir.
 func runZK(t *testing.T, storeDir string, args ...string) (string, string, error) {
 	t.Helper()
 	cmd := exec.Command(zkBinary, args...)
-	cmd.Env = append(os.Environ(), "ZKMEMORY_PATH="+storeDir)
+	cmd.Env = append(os.Environ(), "NETE_PATH="+storeDir)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -58,7 +58,7 @@ func mustRunZK(t *testing.T, storeDir string, args ...string) string {
 	t.Helper()
 	stdout, stderr, err := runZK(t, storeDir, args...)
 	if err != nil {
-		t.Fatalf("zk %s failed: %v\nstdout: %s\nstderr: %s", strings.Join(args, " "), err, stdout, stderr)
+		t.Fatalf("nete %s failed: %v\nstdout: %s\nstderr: %s", strings.Join(args, " "), err, stdout, stderr)
 	}
 	return stdout
 }
@@ -71,7 +71,7 @@ func parseJSON(t *testing.T, data string, target interface{}) {
 	}
 }
 
-// initStore runs "zk init" on a fresh temp dir and returns the store path.
+// initStore runs "nete init" on a fresh temp dir and returns the store path.
 func initStore(t *testing.T) string {
 	t.Helper()
 	storeDir := t.TempDir()
@@ -625,8 +625,8 @@ func TestCLIGraphDOT(t *testing.T) {
 	mustRunZK(t, storeDir, "link", "add", m1, m2, "--type", "supports", "--weight", "0.8")
 
 	stdout := mustRunZK(t, storeDir, "graph", "--format-graph", "dot")
-	if !strings.Contains(stdout, "digraph zk") {
-		t.Errorf("expected DOT output to contain 'digraph zk', got:\n%s", stdout)
+	if !strings.Contains(stdout, "digraph nete") {
+		t.Errorf("expected DOT output to contain 'digraph nete', got:\n%s", stdout)
 	}
 }
 

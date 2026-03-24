@@ -5,16 +5,16 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/store"
+	"github.com/sheeppattern/nete/internal/store"
 )
 
 var searchCmd = &cobra.Command{
 	Use:   "search <query>",
 	Short: "Search memos by query",
 	Long:  "Search memos using full-text search. Supports filtering by tags, status, layer, author, and date range.",
-	Example: `  zk search "Redis" --note 1
-  zk search "auth" --tags "security" --status active
-  zk search "data" --created-after 2026-01-01 --sort created`,
+	Example: `  nete search "Redis" --note 1
+  nete search "auth" --tags "security" --status active
+  nete search "data" --created-after 2026-01-01 --sort created`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		query := args[0]

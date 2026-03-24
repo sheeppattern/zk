@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
-	"github.com/sheeppattern/zk/internal/output"
-	"github.com/sheeppattern/zk/internal/store"
+	"github.com/sheeppattern/nete/internal/model"
+	"github.com/sheeppattern/nete/internal/output"
+	"github.com/sheeppattern/nete/internal/store"
 )
 
 var linkCmd = &cobra.Command{
@@ -22,8 +22,8 @@ var linkCmd = &cobra.Command{
 var linkAddCmd = &cobra.Command{
 	Use:   "add <sourceID> <targetID>",
 	Short: "Add a link between two memos",
-	Example: `  zk link add 1 2 --type supports --weight 0.8
-  zk link add 1 2 --type extends`,
+	Example: `  nete link add 1 2 --type supports --weight 0.8
+  nete link add 1 2 --type extends`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sourceID, err := strconv.ParseInt(args[0], 10, 64)
@@ -64,8 +64,8 @@ var linkAddCmd = &cobra.Command{
 var linkRemoveCmd = &cobra.Command{
 	Use:   "remove <sourceID> <targetID>",
 	Short: "Remove a link between two memos",
-	Example: `  zk link remove 1 2
-  zk link remove 1 2 --type supports`,
+	Example: `  nete link remove 1 2
+  nete link remove 1 2 --type supports`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sourceID, err := strconv.ParseInt(args[0], 10, 64)
@@ -100,9 +100,9 @@ var linkRemoveCmd = &cobra.Command{
 var linkListCmd = &cobra.Command{
 	Use:   "list <memoID>",
 	Short: "List outgoing and incoming links for a memo",
-	Example: `  zk link list 1
-  zk link list 1 --type supports --sort-weight
-  zk link list 1 --depth 3`,
+	Example: `  nete link list 1
+  nete link list 1 --type supports --sort-weight
+  nete link list 1 --depth 3`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		memoID, err := strconv.ParseInt(args[0], 10, 64)
