@@ -25,10 +25,7 @@ var rootCmd = &cobra.Command{
 	Use:   "zk",
 	Short: "Zettelkasten memory CLI for AI agents",
 	Long:  "A Zettelkasten-style memory system designed for AI agents to store, link, and retrieve knowledge memos.",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Auto-update skill files if the binary is newer than on-disk versions.
-		AutoUpdateSkillsIfNeeded()
-	},
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {},
 }
 
 func init() {

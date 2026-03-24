@@ -140,51 +140,13 @@ func WriteGlobalAgentFiles() error {
 	return nil
 }
 
-// AutoUpdateSkillsIfNeeded checks if on-disk skill files are older than the
-// binary's built-in version and regenerates them silently.
-func AutoUpdateSkillsIfNeeded() {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return
-	}
-
-	// Check Claude skill file as the canonical version indicator.
-	skillPath := filepath.Join(home, ".claude", "skills", "zk", "SKILL.md")
-	diskVersion := readDiskSkillVersion(skillPath)
-	if diskVersion == SkillVersion {
-		return
-	}
-
-	// Skill files are stale or missing — regenerate silently.
-	_ = WriteGlobalAgentFiles()
-	debugf("auto-updated skill files: %s → %s", diskVersion, SkillVersion)
-}
-
-// readDiskSkillVersion extracts the version from the first line of a skill file.
-// Expected format: <!-- zk-skill-version: 0.4.0 -->
-func readDiskSkillVersion(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	firstLine := strings.SplitN(string(data), "\n", 2)[0]
-	prefix := "<!-- zk-skill-version: "
-	suffix := " -->"
-	if strings.HasPrefix(firstLine, prefix) && strings.HasSuffix(firstLine, suffix) {
-		return firstLine[len(prefix) : len(firstLine)-len(suffix)]
-	}
-	return ""
-}
-
 // --- Agent-specific writers ---
 
 func writeFile(path string, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	// Prepend version tag so auto-update can detect staleness.
-	versioned := SkillVersionTag() + content
-	return os.WriteFile(path, []byte(versioned), 0o644)
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 // Claude Code: ~/.claude/skills/zk/SKILL.md + references/domain-guide.md
@@ -300,23 +262,6 @@ trigger: always_on
 
 `
 
-// SkillVersion is set at build time via -ldflags, e.g.:
-//
-//	go build -ldflags "-X github.com/sheeppattern/zk/cmd.SkillVersion=$(git rev-parse --short HEAD)"
-//
-// PersistentPreRun compares this with the version embedded in on-disk skill files
-// and auto-regenerates when the binary is newer. Falls back to "dev" during development.
-var SkillVersion = "dev"
-
-// SkillVersionTag returns the HTML comment used to embed version in skill files.
-// Uses Version (app version) when SkillVersion is "dev".
-func SkillVersionTag() string {
-	v := SkillVersion
-	if v == "dev" && Version != "dev" {
-		v = Version
-	}
-	return fmt.Sprintf("<!-- zk-skill-version: %s -->\n", v)
-}
 
 // bt is a shorthand for triple backticks to use inside raw string constants.
 const bt = "```"
