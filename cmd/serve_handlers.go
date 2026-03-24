@@ -197,7 +197,9 @@ func (h *serveHandler) handleMemo(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "failed to save memo", 500)
 			return
 		}
-		jsonResponse(w, toAPIMemoView(memo))
+		view := toAPIMemoView(memo)
+		h.attachLinks(&view)
+		jsonResponse(w, view)
 
 	case "DELETE":
 		if err := h.store.DeleteMemo(memoID); err != nil {
@@ -262,9 +264,7 @@ func (h *serveHandler) handleAllData(w http.ResponseWriter, r *http.Request) {
 	allMemos, _ := h.store.ListAllMemos()
 	views := make([]apiMemoView, 0, len(allMemos))
 	for _, m := range allMemos {
-		v := toAPIMemoView(m)
-		h.attachLinks(&v)
-		views = append(views, v)
+		views = append(views, toAPIMemoView(m))
 	}
 
 	jsonResponse(w, map[string]interface{}{
