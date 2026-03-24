@@ -3,12 +3,12 @@ package cmd
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 	"github.com/sheeppattern/zk/internal/model"
-	"github.com/sheeppattern/zk/internal/store"
 )
 
 var (
@@ -19,18 +19,18 @@ var (
 
 var graphCmd = &cobra.Command{
 	Use:   "graph",
-	Short: "Generate a Mermaid or DOT graph of note connections",
-	Long:  "Visualize the link structure between notes as a Mermaid or DOT graph output to stdout.",
+	Short: "Generate a Mermaid or DOT graph of memo connections",
+	Long:  "Visualize the link structure between memos as a Mermaid or DOT graph output to stdout.",
 	Example: `  zk graph
   zk graph --format-graph dot
-  zk graph --project P-ABC123 --layer abstract
+  zk graph --layer abstract
   zk graph --type supports --format-graph mermaid`,
 	RunE: runGraph,
 }
 
 func init() {
 	graphCmd.Flags().StringVar(&flagFormatGraph, "format-graph", "mermaid", `graph output format: "mermaid" or "dot"`)
-	graphCmd.Flags().StringVar(&flagGraphLayer, "layer", "", "filter notes by layer (concrete, abstract)")
+	graphCmd.Flags().StringVar(&flagGraphLayer, "layer", "", "filter memos by layer (concrete, abstract)")
 	graphCmd.Flags().StringVar(&flagGraphType, "type", "", "filter edges by link relation type")
 	rootCmd.AddCommand(graphCmd)
 }
@@ -40,62 +40,64 @@ func runGraph(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unsupported graph format %q: use \"mermaid\" or \"dot\"", flagFormatGraph)
 	}
 
-	s := store.NewStore(getStorePath(cmd))
-
-	notes, err := s.ListNotes(flagProject)
+	s, err := openStore(cmd)
 	if err != nil {
-		return fmt.Errorf("list notes: %w", err)
+		return err
+	}
+	defer s.Close()
+
+	memos, err := s.ListAllMemos()
+	if err != nil {
+		return fmt.Errorf("list memos: %w", err)
 	}
 
 	// Filter by layer if specified.
 	if flagGraphLayer != "" {
-		var filtered []*model.Note
-		for _, n := range notes {
-			if n.Layer == flagGraphLayer {
-				filtered = append(filtered, n)
+		var filtered []*model.Memo
+		for _, m := range memos {
+			if m.Layer == flagGraphLayer {
+				filtered = append(filtered, m)
 			}
 		}
-		notes = filtered
+		memos = filtered
 	}
 
-	// Build noteMap for ID lookup.
-	noteMap := make(map[string]*model.Note, len(notes))
-	for _, n := range notes {
-		noteMap[n.ID] = n
+	// Build memo set for ID lookup.
+	memoSet := make(map[int64]bool, len(memos))
+	for _, m := range memos {
+		memoSet[m.ID] = true
 	}
 
 	// Collect edges with deduplication using sorted pair key.
 	type edge struct {
-		From     string
-		To       string
+		From     int64
+		To       int64
 		Relation string
 		Weight   float64
 	}
 	seen := make(map[string]bool)
 	var edges []edge
 
-	for _, n := range notes {
-		for _, lnk := range n.Links {
-			// Skip if target is not in the note set.
-			if _, ok := noteMap[lnk.TargetID]; !ok {
+	for _, m := range memos {
+		outgoing, _, _ := s.ListLinks(m.ID)
+		for _, lnk := range outgoing {
+			if !memoSet[lnk.TargetID] {
 				continue
 			}
-			// Filter by relation type if specified.
 			if flagGraphType != "" && lnk.RelationType != flagGraphType {
 				continue
 			}
-			// Dedup with sorted pair key.
-			pair := [2]string{n.ID, lnk.TargetID}
+			pair := [2]int64{m.ID, lnk.TargetID}
 			if pair[0] > pair[1] {
 				pair[0], pair[1] = pair[1], pair[0]
 			}
-			key := pair[0] + "|" + pair[1]
+			key := strconv.FormatInt(pair[0], 10) + "|" + strconv.FormatInt(pair[1], 10)
 			if seen[key] {
 				continue
 			}
 			seen[key] = true
 			edges = append(edges, edge{
-				From:     n.ID,
+				From:     m.ID,
 				To:       lnk.TargetID,
 				Relation: lnk.RelationType,
 				Weight:   lnk.Weight,
@@ -103,11 +105,11 @@ func runGraph(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Sort notes by ID for deterministic output.
-	sortedNotes := make([]*model.Note, len(notes))
-	copy(sortedNotes, notes)
-	sort.Slice(sortedNotes, func(i, j int) bool {
-		return sortedNotes[i].ID < sortedNotes[j].ID
+	// Sort memos by ID for deterministic output.
+	sortedMemos := make([]*model.Memo, len(memos))
+	copy(sortedMemos, memos)
+	sort.Slice(sortedMemos, func(i, j int) bool {
+		return sortedMemos[i].ID < sortedMemos[j].ID
 	})
 
 	var b strings.Builder
@@ -115,28 +117,22 @@ func runGraph(cmd *cobra.Command, args []string) error {
 	switch flagFormatGraph {
 	case "mermaid":
 		b.WriteString("graph LR\n")
-		// Node declarations.
-		for _, n := range sortedNotes {
-			title := truncateTitle(n.Title, 30)
-			label := fmt.Sprintf("%s (%s)", title, n.Layer)
-			nodeID := n.ID
-			if n.Layer == model.LayerAbstract {
+		for _, m := range sortedMemos {
+			title := truncateTitle(m.Title, 30)
+			label := fmt.Sprintf("%s (%s)", title, m.Layer)
+			nodeID := strconv.FormatInt(m.ID, 10)
+			if m.Layer == model.LayerAbstract {
 				b.WriteString(fmt.Sprintf("  %s{{\"%s\"}}\n", nodeID, label))
 			} else {
 				b.WriteString(fmt.Sprintf("  %s[\"%s\"]\n", nodeID, label))
 			}
 		}
-		// Edges.
 		for _, e := range edges {
-			fromID := e.From
-			toID := e.To
-			b.WriteString(fmt.Sprintf("  %s -->|\"%s (%.1f)\"| %s\n", fromID, e.Relation, e.Weight, toID))
+			b.WriteString(fmt.Sprintf("  %d -->|\"%s (%.1f)\"| %d\n", e.From, e.Relation, e.Weight, e.To))
 		}
-		// Style abstract nodes.
-		for _, n := range sortedNotes {
-			if n.Layer == model.LayerAbstract {
-				nodeID := n.ID
-				b.WriteString(fmt.Sprintf("  style %s fill:#fde8e8\n", nodeID))
+		for _, m := range sortedMemos {
+			if m.Layer == model.LayerAbstract {
+				b.WriteString(fmt.Sprintf("  style %d fill:#fde8e8\n", m.ID))
 			}
 		}
 
@@ -144,17 +140,15 @@ func runGraph(cmd *cobra.Command, args []string) error {
 		b.WriteString("digraph zk {\n")
 		b.WriteString("  rankdir=LR;\n")
 		b.WriteString("  node [shape=box, style=filled];\n")
-		// Node declarations.
-		for _, n := range sortedNotes {
-			title := truncateTitle(n.Title, 30)
-			label := fmt.Sprintf("%s (%s)", title, n.Layer)
+		for _, m := range sortedMemos {
+			title := truncateTitle(m.Title, 30)
+			label := fmt.Sprintf("%s (%s)", title, m.Layer)
 			fillColor := "#e8f4fd"
-			if n.Layer == model.LayerAbstract {
+			if m.Layer == model.LayerAbstract {
 				fillColor = "#fde8e8"
 			}
-			b.WriteString(fmt.Sprintf("  \"%s\" [label=\"%s\", fillcolor=\"%s\"];\n", n.ID, label, fillColor))
+			b.WriteString(fmt.Sprintf("  \"%d\" [label=\"%s\", fillcolor=\"%s\"];\n", m.ID, label, fillColor))
 		}
-		// Edges.
 		for _, e := range edges {
 			edgeColor := "black"
 			switch e.Relation {
@@ -163,13 +157,13 @@ func runGraph(cmd *cobra.Command, args []string) error {
 			case model.RelSupports:
 				edgeColor = "green"
 			}
-			b.WriteString(fmt.Sprintf("  \"%s\" -> \"%s\" [label=\"%s (%.1f)\", color=%s];\n", e.From, e.To, e.Relation, e.Weight, edgeColor))
+			b.WriteString(fmt.Sprintf("  \"%d\" -> \"%d\" [label=\"%s (%.1f)\", color=%s];\n", e.From, e.To, e.Relation, e.Weight, edgeColor))
 		}
 		b.WriteString("}\n")
 	}
 
 	fmt.Print(b.String())
-	statusf("graph: %d nodes, %d edges", len(notes), len(edges))
+	statusf("graph: %d nodes, %d edges", len(memos), len(edges))
 	return nil
 }
 

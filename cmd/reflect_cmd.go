@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/sheeppattern/zk/internal/model"
-	"github.com/sheeppattern/zk/internal/store"
 )
 
 // ReflectReport holds the full reflection analysis results.
@@ -19,10 +18,10 @@ type ReflectReport struct {
 
 // Insight represents a single reflection finding.
 type Insight struct {
-	Type           string   `json:"type" yaml:"type"`                                         // "tension", "hub_without_abstraction", "orphan_cluster", "low_abstraction"
-	SourceNotes    []string `json:"source_notes" yaml:"source_notes"`
-	Suggestion     string   `json:"suggestion" yaml:"suggestion"`
-	SuggestedTitle string   `json:"suggested_title,omitempty" yaml:"suggested_title,omitempty"`
+	Type           string  `json:"type" yaml:"type"` // "tension", "hub_without_abstraction", "orphan_cluster", "low_abstraction", "bloated_note", "suggested_link"
+	SourceMemos    []int64 `json:"source_memos" yaml:"source_memos"`
+	Suggestion     string  `json:"suggestion" yaml:"suggestion"`
+	SuggestedTitle string  `json:"suggested_title,omitempty" yaml:"suggested_title,omitempty"`
 }
 
 // ReflectStats provides abstraction-level statistics.
@@ -38,9 +37,9 @@ var flagSuggestLinks bool
 
 var reflectCmd = &cobra.Command{
 	Use:   "reflect",
-	Short: "Analyze notes and suggest abstract insights",
-	Long:  "Analyze a project's notes to detect tensions, hubs without abstraction, and orphan clusters, then suggest abstract insight notes.",
-	Example: `  zk reflect --project P-XXXXXX
+	Short: "Analyze memos and suggest abstract insights",
+	Long:  "Analyze memos to detect tensions, hubs without abstraction, and orphan clusters, then suggest abstract insight memos.",
+	Example: `  zk reflect
   zk reflect --format md
   zk reflect --apply`,
 	RunE: runReflect,
@@ -48,59 +47,72 @@ var reflectCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(reflectCmd)
-	reflectCmd.Flags().BoolVar(&flagApply, "apply", false, "auto-create suggested abstract notes")
-	reflectCmd.Flags().BoolVar(&flagSuggestLinks, "suggest-links", false, "suggest missing links between similar notes")
+	reflectCmd.Flags().BoolVar(&flagApply, "apply", false, "auto-create suggested abstract memos")
+	reflectCmd.Flags().BoolVar(&flagSuggestLinks, "suggest-links", false, "suggest missing links between similar memos")
 }
 
 func runReflect(cmd *cobra.Command, args []string) error {
-	s := store.NewStore(getStorePath(cmd))
+	s, err := openStore(cmd)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
 	f := getFormatter()
 
-	notes, err := s.ListNotes(flagProject)
+	memos, err := s.ListAllMemos()
 	if err != nil {
-		return fmt.Errorf("list notes: %w", err)
+		return fmt.Errorf("list memos: %w", err)
 	}
 
-	report := buildReflectReport(notes)
+	// Build link maps from the store.
+	outgoingMap := make(map[int64][]model.Link)
+	incomingMap := make(map[int64][]model.Link)
+	for _, m := range memos {
+		out, in, lErr := s.ListLinks(m.ID)
+		if lErr != nil {
+			continue
+		}
+		outgoingMap[m.ID] = out
+		incomingMap[m.ID] = in
+	}
 
-	// --suggest-links: analyze note content for potential missing links.
+	report := buildReflectReport(memos, outgoingMap, incomingMap)
+
+	// --suggest-links: analyze memo content for potential missing links.
 	if flagSuggestLinks {
-		suggestions := suggestLinks(notes)
+		suggestions := suggestLinks(memos, outgoingMap)
 		report.Insights = append(report.Insights, suggestions...)
 	}
 
-	// --apply: create suggested abstract notes.
+	// --apply: create suggested abstract memos.
 	if flagApply {
 		created := 0
 		for _, insight := range report.Insights {
 			if insight.SuggestedTitle == "" {
 				continue
 			}
-			newNote := model.NewNote(insight.SuggestedTitle, insight.Suggestion, []string{"auto-reflect"})
-			newNote.Layer = "abstract"
-			newNote.ProjectID = flagProject
-			if err := s.CreateNote(newNote); err != nil {
-				return fmt.Errorf("create abstract note: %w", err)
+			newMemo := &model.Memo{
+				Title:   insight.SuggestedTitle,
+				Content: insight.Suggestion,
+				Tags:    []string{"auto-reflect"},
+				Layer:   model.LayerAbstract,
+				NoteID:  flagNote,
+				Metadata: model.Metadata{
+					Status: model.StatusActive,
+				},
 			}
-			// Add "abstracts" links from each source note to the new note.
-			for _, srcID := range insight.SourceNotes {
-				srcNote, err := s.GetNote(flagProject, srcID)
-				if err != nil {
-					statusf("warning: could not read source note %s: %v", srcID, err)
-					continue
-				}
-				srcNote.Links = append(srcNote.Links, model.Link{
-					TargetID:     newNote.ID,
-					RelationType: model.RelAbstracts,
-					Weight:       0.7,
-				})
-				if err := s.UpdateNote(srcNote); err != nil {
-					statusf("warning: could not update source note %s: %v", srcID, err)
+			if err := s.CreateMemo(newMemo); err != nil {
+				return fmt.Errorf("create abstract memo: %w", err)
+			}
+			// Add "abstracts" links from each source memo to the new memo.
+			for _, srcID := range insight.SourceMemos {
+				if err := s.AddLink(srcID, newMemo.ID, model.RelAbstracts, 0.7); err != nil {
+					statusf("warning: could not add link from %d to %d: %v", srcID, newMemo.ID, err)
 				}
 			}
 			created++
 		}
-		statusf("created %d abstract notes", created)
+		statusf("created %d abstract memos", created)
 	}
 
 	switch f.Format {
@@ -116,50 +128,36 @@ func runReflect(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func buildReflectReport(notes []*model.Note) *ReflectReport {
+func buildReflectReport(memos []*model.Memo, outgoingMap map[int64][]model.Link, incomingMap map[int64][]model.Link) *ReflectReport {
 	report := &ReflectReport{
 		Insights: []Insight{},
 	}
 
-	// Separate concrete and abstract notes.
-	noteByID := make(map[string]*model.Note)
-	var concreteNotes []*model.Note
-	var abstractNotes []*model.Note
+	// Separate concrete and abstract memos.
+	memoByID := make(map[int64]*model.Memo)
+	var concreteMemos []*model.Memo
+	var abstractMemos []*model.Memo
 
-	for _, n := range notes {
-		noteByID[n.ID] = n
-		switch n.Layer {
+	for _, m := range memos {
+		memoByID[m.ID] = m
+		switch m.Layer {
 		case model.LayerAbstract:
-			abstractNotes = append(abstractNotes, n)
-		default: // "" or "concrete"
-			concreteNotes = append(concreteNotes, n)
+			abstractMemos = append(abstractMemos, m)
+		default:
+			concreteMemos = append(concreteMemos, m)
 		}
 	}
 
-	// Build adjacency: noteID -> list of links (outgoing).
-	outgoing := make(map[string][]model.Link)
-	incoming := make(map[string][]model.Link)
-	for _, n := range notes {
-		outgoing[n.ID] = n.Links
-		for _, link := range n.Links {
-			incoming[link.TargetID] = append(incoming[link.TargetID], model.Link{
-				TargetID:     n.ID,
-				RelationType: link.RelationType,
-				Weight:       link.Weight,
-			})
-		}
-	}
-
-	// 1. Detect tensions: pairs connected by "contradicts" without a shared abstract note.
-	type pair struct{ a, b string }
+	// 1. Detect tensions: pairs connected by "contradicts" without a shared abstract memo.
+	type pair struct{ a, b int64 }
 	seenPairs := make(map[pair]bool)
 
-	for _, n := range notes {
-		for _, link := range n.Links {
+	for _, m := range memos {
+		for _, link := range outgoingMap[m.ID] {
 			if link.RelationType != model.RelContradicts {
 				continue
 			}
-			p := pair{n.ID, link.TargetID}
+			p := pair{m.ID, link.TargetID}
 			if p.a > p.b {
 				p = pair{p.b, p.a}
 			}
@@ -168,12 +166,12 @@ func buildReflectReport(notes []*model.Note) *ReflectReport {
 			}
 			seenPairs[p] = true
 
-			// Check if any abstract note is connected to both via "abstracts" or "grounds".
+			// Check if any abstract memo is connected to both.
 			hasSharedAbstract := false
-			for _, absNote := range abstractNotes {
+			for _, absMemo := range abstractMemos {
 				connectsA := false
 				connectsB := false
-				for _, al := range absNote.Links {
+				for _, al := range outgoingMap[absMemo.ID] {
 					if al.RelationType == model.RelAbstracts || al.RelationType == model.RelGrounds {
 						if al.TargetID == p.a {
 							connectsA = true
@@ -183,13 +181,12 @@ func buildReflectReport(notes []*model.Note) *ReflectReport {
 						}
 					}
 				}
-				// Also check incoming links to the abstract note.
-				for _, il := range incoming[absNote.ID] {
+				for _, il := range incomingMap[absMemo.ID] {
 					if il.RelationType == model.RelAbstracts || il.RelationType == model.RelGrounds {
-						if il.TargetID == p.a {
+						if il.SourceID == p.a {
 							connectsA = true
 						}
-						if il.TargetID == p.b {
+						if il.SourceID == p.b {
 							connectsB = true
 						}
 					}
@@ -201,33 +198,33 @@ func buildReflectReport(notes []*model.Note) *ReflectReport {
 			}
 
 			if !hasSharedAbstract {
-				titleA := p.a
-				titleB := p.b
-				if na, ok := noteByID[p.a]; ok {
+				titleA := fmt.Sprintf("%d", p.a)
+				titleB := fmt.Sprintf("%d", p.b)
+				if na, ok := memoByID[p.a]; ok {
 					titleA = na.Title
 				}
-				if nb, ok := noteByID[p.b]; ok {
+				if nb, ok := memoByID[p.b]; ok {
 					titleB = nb.Title
 				}
 				report.Insights = append(report.Insights, Insight{
 					Type:           "tension",
-					SourceNotes:    []string{p.a, p.b},
-					Suggestion:     fmt.Sprintf("%s(%s)과 %s(%s) 사이에 긴장이 있지만 이를 종합하는 추상 노트가 없습니다", p.a, titleA, p.b, titleB),
-					SuggestedTitle: fmt.Sprintf("%s vs %s — 어떤 판단이 필요한가?", titleA, titleB),
+					SourceMemos:    []int64{p.a, p.b},
+					Suggestion:     fmt.Sprintf("Tension between %d(%s) and %d(%s) without a synthesizing abstract memo", p.a, titleA, p.b, titleB),
+					SuggestedTitle: fmt.Sprintf("%s vs %s", titleA, titleB),
 				})
 			}
 		}
 	}
 
-	// 2. Detect hubs without abstraction: concrete notes with 4+ outgoing links,
-	//    none leading to an abstract note.
-	for _, n := range concreteNotes {
-		if len(n.Links) < 4 {
+	// 2. Detect hubs without abstraction: concrete memos with 4+ outgoing links.
+	for _, m := range concreteMemos {
+		links := outgoingMap[m.ID]
+		if len(links) < 4 {
 			continue
 		}
 		hasAbstractLink := false
-		for _, link := range n.Links {
-			if target, ok := noteByID[link.TargetID]; ok && target.Layer == model.LayerAbstract {
+		for _, link := range links {
+			if target, ok := memoByID[link.TargetID]; ok && target.Layer == model.LayerAbstract {
 				hasAbstractLink = true
 				break
 			}
@@ -235,40 +232,39 @@ func buildReflectReport(notes []*model.Note) *ReflectReport {
 		if !hasAbstractLink {
 			report.Insights = append(report.Insights, Insight{
 				Type:        "hub_without_abstraction",
-				SourceNotes: []string{n.ID},
-				Suggestion:  fmt.Sprintf("%s(%s)이 %d개 노트와 연결되어 있지만 상위 추상화가 없습니다", n.ID, n.Title, len(n.Links)),
+				SourceMemos: []int64{m.ID},
+				Suggestion:  fmt.Sprintf("Memo %d(%s) has %d links but no abstract connection", m.ID, m.Title, len(links)),
 			})
 		}
 	}
 
-	// 3. Detect orphan clusters: concrete notes with 0 outgoing AND 0 incoming links.
-	for _, n := range concreteNotes {
-		hasOutgoing := len(n.Links) > 0
-		hasIncoming := len(incoming[n.ID]) > 0
+	// 3. Detect orphan clusters.
+	for _, m := range concreteMemos {
+		hasOutgoing := len(outgoingMap[m.ID]) > 0
+		hasIncoming := len(incomingMap[m.ID]) > 0
 		if !hasOutgoing && !hasIncoming {
 			report.Insights = append(report.Insights, Insight{
 				Type:        "orphan_cluster",
-				SourceNotes: []string{n.ID},
-				Suggestion:  fmt.Sprintf("%s(%s)이 고립되어 있습니다 — 다른 노트와의 관계를 검토하세요", n.ID, n.Title),
+				SourceMemos: []int64{m.ID},
+				Suggestion:  fmt.Sprintf("Memo %d(%s) is isolated — review connections", m.ID, m.Title),
 			})
 		}
 	}
 
-	// 4. Detect bloated notes: concrete notes with content > 1000 characters.
-	for _, n := range concreteNotes {
-		if utf8.RuneCountInString(n.Content) > 1000 {
+	// 4. Detect bloated memos.
+	for _, m := range concreteMemos {
+		if utf8.RuneCountInString(m.Content) > 1000 {
 			report.Insights = append(report.Insights, Insight{
-				Type:           "bloated_note",
-				SourceNotes:    []string{n.ID},
-				Suggestion:     fmt.Sprintf("%s(%s)이 %d자로 비대합니다 — 가설/검증/결론 노트로 분리를 고려하세요", n.ID, n.Title, utf8.RuneCountInString(n.Content)),
-				SuggestedTitle: "",
+				Type:        "bloated_note",
+				SourceMemos: []int64{m.ID},
+				Suggestion:  fmt.Sprintf("Memo %d(%s) is %d chars — consider splitting", m.ID, m.Title, utf8.RuneCountInString(m.Content)),
 			})
 		}
 	}
 
 	// 5. Calculate stats.
-	concreteCount := len(concreteNotes)
-	abstractCount := len(abstractNotes)
+	concreteCount := len(concreteMemos)
+	abstractCount := len(abstractMemos)
 	total := concreteCount + abstractCount
 	var ratio float64
 	if total > 0 {
@@ -278,11 +274,11 @@ func buildReflectReport(notes []*model.Note) *ReflectReport {
 	var recommendation string
 	switch {
 	case ratio < 0.1:
-		recommendation = "인사이트 부족 — concrete 노트에서 패턴과 질문을 도출하세요"
+		recommendation = "Low insight ratio — derive patterns and questions from concrete memos"
 	case ratio <= 0.3:
-		recommendation = "양호 — 허브 노트와 긴장 관계에 추가 추상화를 고려하세요"
+		recommendation = "Good — consider adding abstractions for hubs and tensions"
 	default:
-		recommendation = "충분한 추상화 수준"
+		recommendation = "Sufficient abstraction level"
 	}
 
 	report.Stats = ReflectStats{
@@ -296,14 +292,11 @@ func buildReflectReport(notes []*model.Note) *ReflectReport {
 }
 
 // charTrigrams extracts a set of character trigrams from text.
-// This approach handles CJK languages well because it doesn't rely on
-// word boundaries or spaces — "구조화와" and "구조는" share the trigram "구조".
 func charTrigrams(text string) map[string]bool {
 	runes := []rune(text)
 	set := make(map[string]bool)
 	for i := 0; i+3 <= len(runes); i++ {
 		tri := string(runes[i : i+3])
-		// Skip trigrams that are all whitespace/punctuation.
 		hasContent := false
 		for _, r := range tri {
 			if r > ' ' && r != '.' && r != ',' && r != '!' && r != '?' {
@@ -318,44 +311,42 @@ func charTrigrams(text string) map[string]bool {
 	return set
 }
 
-// suggestLinks analyzes note content to find pairs that share significant
-// keyword overlap but have no existing link, suggesting potential connections.
-func suggestLinks(notes []*model.Note) []Insight {
+// suggestLinks analyzes memo content to find pairs that share significant
+// keyword overlap but have no existing link.
+func suggestLinks(memos []*model.Memo, outgoingMap map[int64][]model.Link) []Insight {
 	type candidate struct {
-		a, b       string
+		a, b       int64
 		aTitle     string
 		bTitle     string
 		similarity float64
 	}
 
-	// Extract character trigram sets per note for CJK-friendly similarity.
-	keywords := make(map[string]map[string]bool)
-	for _, n := range notes {
-		text := strings.ToLower(n.Title + " " + n.Content)
-		keywords[n.ID] = charTrigrams(text)
+	keywords := make(map[int64]map[string]bool)
+	for _, m := range memos {
+		text := strings.ToLower(m.Title + " " + m.Content)
+		keywords[m.ID] = charTrigrams(text)
 	}
 
-	// Build existing link set (bidirectional).
-	type pair struct{ a, b string }
-	existingLinks := make(map[pair]bool)
-	for _, n := range notes {
-		for _, link := range n.Links {
-			p := pair{n.ID, link.TargetID}
+	// Build existing link set.
+	type pairKey struct{ a, b int64 }
+	existingLinks := make(map[pairKey]bool)
+	for _, m := range memos {
+		for _, link := range outgoingMap[m.ID] {
+			p := pairKey{m.ID, link.TargetID}
 			if p.a > p.b {
-				p = pair{p.b, p.a}
+				p = pairKey{p.b, p.a}
 			}
 			existingLinks[p] = true
 		}
 	}
 
-	// Compare all pairs.
 	var candidates []candidate
-	for i := 0; i < len(notes); i++ {
-		for j := i + 1; j < len(notes); j++ {
-			a, b := notes[i], notes[j]
-			p := pair{a.ID, b.ID}
+	for i := 0; i < len(memos); i++ {
+		for j := i + 1; j < len(memos); j++ {
+			a, b := memos[i], memos[j]
+			p := pairKey{a.ID, b.ID}
 			if p.a > p.b {
-				p = pair{p.b, p.a}
+				p = pairKey{p.b, p.a}
 			}
 			if existingLinks[p] {
 				continue
@@ -363,8 +354,6 @@ func suggestLinks(notes []*model.Note) []Insight {
 
 			wordsA := keywords[a.ID]
 			wordsB := keywords[b.ID]
-
-			// Jaccard similarity.
 			if len(wordsA) == 0 || len(wordsB) == 0 {
 				continue
 			}
@@ -389,7 +378,6 @@ func suggestLinks(notes []*model.Note) []Insight {
 		}
 	}
 
-	// Sort by similarity descending, take top 10.
 	for i := 0; i < len(candidates); i++ {
 		for j := i + 1; j < len(candidates); j++ {
 			if candidates[j].similarity > candidates[i].similarity {
@@ -405,8 +393,8 @@ func suggestLinks(notes []*model.Note) []Insight {
 	for _, c := range candidates {
 		insights = append(insights, Insight{
 			Type:        "suggested_link",
-			SourceNotes: []string{c.a, c.b},
-			Suggestion:  fmt.Sprintf("%s(%s)와 %s(%s) — 유사도 %.0f%%, 연결을 검토하세요", c.a, c.aTitle, c.b, c.bTitle, c.similarity*100),
+			SourceMemos: []int64{c.a, c.b},
+			Suggestion:  fmt.Sprintf("%d(%s) and %d(%s) — %.0f%% similarity, consider linking", c.a, c.aTitle, c.b, c.bTitle, c.similarity*100),
 		})
 	}
 	return insights
@@ -422,15 +410,16 @@ func printReflectMD(report *ReflectReport) {
 
 	fmt.Fprintf(&b, "## Insights\n\n")
 
-	// Group insights by type.
 	tensions := filterInsights(report.Insights, "tension")
 	hubs := filterInsights(report.Insights, "hub_without_abstraction")
 	orphans := filterInsights(report.Insights, "orphan_cluster")
+	bloated := filterInsights(report.Insights, "bloated_note")
+	suggested := filterInsights(report.Insights, "suggested_link")
 
 	if len(tensions) > 0 {
 		fmt.Fprintf(&b, "### Tensions\n\n")
 		for _, ins := range tensions {
-			fmt.Fprintf(&b, "- [%s] %s\n", strings.Join(ins.SourceNotes, ", "), ins.Suggestion)
+			fmt.Fprintf(&b, "- [%v] %s\n", ins.SourceMemos, ins.Suggestion)
 		}
 		fmt.Fprintf(&b, "\n")
 	}
@@ -438,42 +427,39 @@ func printReflectMD(report *ReflectReport) {
 	if len(hubs) > 0 {
 		fmt.Fprintf(&b, "### Hub Without Abstraction\n\n")
 		for _, ins := range hubs {
-			fmt.Fprintf(&b, "- [%s] %s\n", strings.Join(ins.SourceNotes, ", "), ins.Suggestion)
+			fmt.Fprintf(&b, "- [%v] %s\n", ins.SourceMemos, ins.Suggestion)
 		}
 		fmt.Fprintf(&b, "\n")
 	}
 
 	if len(orphans) > 0 {
-		fmt.Fprintf(&b, "### Orphan Notes\n\n")
+		fmt.Fprintf(&b, "### Orphan Memos\n\n")
 		for _, ins := range orphans {
-			fmt.Fprintf(&b, "- [%s] %s\n", strings.Join(ins.SourceNotes, ", "), ins.Suggestion)
+			fmt.Fprintf(&b, "- [%v] %s\n", ins.SourceMemos, ins.Suggestion)
 		}
 		fmt.Fprintf(&b, "\n")
 	}
-
-	bloated := filterInsights(report.Insights, "bloated_note")
 
 	if len(bloated) > 0 {
-		fmt.Fprintf(&b, "### Bloated Notes\n\n")
+		fmt.Fprintf(&b, "### Bloated Memos\n\n")
 		for _, ins := range bloated {
-			fmt.Fprintf(&b, "- [%s] %s\n", strings.Join(ins.SourceNotes, ", "), ins.Suggestion)
+			fmt.Fprintf(&b, "- [%v] %s\n", ins.SourceMemos, ins.Suggestion)
 		}
 		fmt.Fprintf(&b, "\n")
 	}
 
-	suggested := filterInsights(report.Insights, "suggested_link")
 	if len(suggested) > 0 {
 		fmt.Fprintf(&b, "### Suggested Links\n\n")
 		for _, ins := range suggested {
-			if len(ins.SourceNotes) >= 2 {
-				fmt.Fprintf(&b, "- [%s ↔ %s] %s\n", ins.SourceNotes[0], ins.SourceNotes[1], ins.Suggestion)
+			if len(ins.SourceMemos) >= 2 {
+				fmt.Fprintf(&b, "- [%d <-> %d] %s\n", ins.SourceMemos[0], ins.SourceMemos[1], ins.Suggestion)
 			}
 		}
 		fmt.Fprintf(&b, "\n")
 	}
 
 	if len(tensions) == 0 && len(hubs) == 0 && len(orphans) == 0 && len(bloated) == 0 && len(suggested) == 0 {
-		fmt.Fprintf(&b, "No insights found. Notes are well-structured.\n")
+		fmt.Fprintf(&b, "No insights found. Memos are well-structured.\n")
 	}
 
 	fmt.Fprint(os.Stdout, b.String())

@@ -31,46 +31,49 @@ func buildSchemaRegistry() []SchemaResource {
 
 	return []SchemaResource{
 		{
-			Name:        "note",
-			Description: "An atomic memory note in the Zettelkasten",
+			Name:        "memo",
+			Description: "An atomic memory record in the Zettelkasten",
 			Fields: []SchemaField{
-				{Name: "id", Type: "string", Required: false, Description: "Auto-generated unique identifier (e.g. N-ABCDEF)"},
-				{Name: "title", Type: "string", Required: true, Description: "Title of the note"},
-				{Name: "content", Type: "string", Required: true, Description: "Body content of the note"},
+				{Name: "id", Type: "int64", Required: false, Description: "Auto-generated unique identifier"},
+				{Name: "title", Type: "string", Required: true, Description: "Title of the memo"},
+				{Name: "content", Type: "string", Required: false, Description: "Body content of the memo"},
 				{Name: "tags", Type: "string[]", Required: false, Description: "List of tags for categorization"},
-				{Name: "links", Type: "Link[]", Required: false, Description: "Array of Link objects connecting to other notes"},
+				{Name: "layer", Type: "string", Required: false, Default: "concrete", Description: "Layer: concrete or abstract"},
+				{Name: "note_id", Type: "int64", Required: false, Default: "0", Description: "ID of the note this memo belongs to (0 = global)"},
 				{Name: "metadata", Type: "Metadata", Required: false, Description: "Auto-managed metadata object"},
-				{Name: "project_id", Type: "string", Required: false, Description: "ID of the project this note belongs to"},
+			},
+		},
+		{
+			Name:        "note",
+			Description: "A grouping that holds related memos together",
+			Fields: []SchemaField{
+				{Name: "id", Type: "int64", Required: false, Description: "Auto-generated unique identifier"},
+				{Name: "name", Type: "string", Required: true, Description: "Name of the note"},
+				{Name: "description", Type: "string", Required: false, Description: "Description of the note"},
+				{Name: "created_at", Type: "datetime", Required: false, Description: "Timestamp when the note was created (auto-set)"},
+				{Name: "updated_at", Type: "datetime", Required: false, Description: "Timestamp when the note was last updated (auto-set)"},
 			},
 		},
 		{
 			Name:        "link",
-			Description: "A weighted, typed connection between notes",
+			Description: "A weighted, typed connection between memos",
 			Fields: []SchemaField{
-				{Name: "target_id", Type: "string", Required: true, Description: "ID of the target note"},
+				{Name: "source_id", Type: "int64", Required: true, Description: "ID of the source memo"},
+				{Name: "target_id", Type: "int64", Required: true, Description: "ID of the target memo"},
 				{Name: "relation_type", Type: "string", Required: false, Default: "related", Description: fmt.Sprintf("Type of relation; valid values: %s", relationValues)},
 				{Name: "weight", Type: "float64", Required: false, Default: "0.5", Description: "Connection strength from 0.0 to 1.0"},
 			},
 		},
 		{
 			Name:        "metadata",
-			Description: "Auto-recorded metadata for a note",
+			Description: "Auto-recorded metadata for a memo",
 			Fields: []SchemaField{
-				{Name: "created_at", Type: "datetime", Required: false, Description: "Timestamp when the note was created (auto-set)"},
-				{Name: "updated_at", Type: "datetime", Required: false, Description: "Timestamp when the note was last updated (auto-set)"},
-				{Name: "source", Type: "string", Required: false, Description: "Origin or source of the note content"},
-				{Name: "status", Type: "string", Required: false, Default: "active", Description: "Note status: active or archived"},
-			},
-		},
-		{
-			Name:        "project",
-			Description: "A project that groups related notes together",
-			Fields: []SchemaField{
-				{Name: "id", Type: "string", Required: false, Description: "Auto-generated unique identifier (e.g. P-ABCDEF)"},
-				{Name: "name", Type: "string", Required: true, Description: "Name of the project"},
-				{Name: "description", Type: "string", Required: false, Description: "Description of the project"},
-				{Name: "created_at", Type: "datetime", Required: false, Description: "Timestamp when the project was created (auto-set)"},
-				{Name: "updated_at", Type: "datetime", Required: false, Description: "Timestamp when the project was last updated (auto-set)"},
+				{Name: "created_at", Type: "datetime", Required: false, Description: "Timestamp when the memo was created (auto-set)"},
+				{Name: "updated_at", Type: "datetime", Required: false, Description: "Timestamp when the memo was last updated (auto-set)"},
+				{Name: "source", Type: "string", Required: false, Description: "Origin or source of the memo content"},
+				{Name: "status", Type: "string", Required: false, Default: "active", Description: "Memo status: active or archived"},
+				{Name: "summary", Type: "string", Required: false, Description: "Brief summary for quick scanning"},
+				{Name: "author", Type: "string", Required: false, Description: "Author of the memo"},
 			},
 		},
 		{
@@ -78,13 +81,14 @@ func buildSchemaRegistry() []SchemaResource {
 			Description: "CLI configuration settings",
 			Fields: []SchemaField{
 				{Name: "store_path", Type: "string", Required: false, Description: "Path to the data store directory"},
-				{Name: "default_project", Type: "string", Required: false, Description: "Default project scope for operations"},
+				{Name: "default_note", Type: "string", Required: false, Description: "Default note scope for operations"},
 				{Name: "default_format", Type: "string", Required: false, Description: "Default output format: json, yaml, or md"},
+				{Name: "default_author", Type: "string", Required: false, Description: "Default author for new memos"},
 			},
 		},
 		{
 			Name:        "relation-types",
-			Description: "All valid relation types for links between notes",
+			Description: "All valid relation types for links between memos",
 			Fields: buildRelationTypeFields(),
 		},
 	}
@@ -93,12 +97,16 @@ func buildSchemaRegistry() []SchemaResource {
 // buildRelationTypeFields generates a SchemaField per valid relation type.
 func buildRelationTypeFields() []SchemaField {
 	descriptions := map[string]string{
-		"related":     "General association between notes",
-		"supports":    "Source note provides evidence or support for target",
-		"contradicts": "Source note contradicts or conflicts with target",
-		"extends":     "Source note extends or elaborates on target",
-		"causes":      "Source note describes a cause of the target",
-		"example-of":  "Source note is an example of the concept in target",
+		"related":     "General association between memos",
+		"supports":    "Source memo provides evidence or support for target",
+		"contradicts": "Source memo contradicts or conflicts with target",
+		"extends":     "Source memo extends or elaborates on target",
+		"causes":      "Source memo describes a cause of the target",
+		"example-of":  "Source memo is an example of the concept in target",
+		"abstracts":   "Concrete memo led to this abstract insight",
+		"grounds":     "Abstract insight is grounded in this concrete evidence",
+		"replaces":    "New memo supersedes an older one",
+		"invalidates": "Data disproves a hypothesis",
 	}
 
 	types := model.ValidRelationTypes()
@@ -167,9 +175,9 @@ func printSchemaDetailMD(r *SchemaResource) {
 var schemaCmd = &cobra.Command{
 	Use:   "schema [resource]",
 	Short: "Show schema information for resources",
-	Long: "Display available resources and their field definitions. Without arguments, lists all resources. With a resource name, shows detailed field schema.",
+	Long:  "Display available resources and their field definitions.",
 	Example: `  zk schema
-  zk schema note
+  zk schema memo
   zk schema relation-types`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -177,7 +185,6 @@ var schemaCmd = &cobra.Command{
 		f := getFormatter()
 
 		if len(args) == 0 {
-			// List mode: show all resources without fields.
 			summaries := make([]SchemaResource, len(registry))
 			for i, r := range registry {
 				summaries[i] = SchemaResource{
@@ -197,7 +204,6 @@ var schemaCmd = &cobra.Command{
 			}
 		}
 
-		// Detail mode: show full schema for the specified resource.
 		name := args[0]
 		resource := findResource(name, registry)
 		if resource == nil {

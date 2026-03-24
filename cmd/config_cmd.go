@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/store"
 )
 
 var configCmd = &cobra.Command{
@@ -19,7 +18,12 @@ var configShowCmd = &cobra.Command{
   zk config show --format yaml`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s := store.NewStore(getStorePath(cmd))
+		s, err := openStore(cmd)
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+
 		cfg, err := s.LoadConfig()
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
@@ -31,13 +35,18 @@ var configShowCmd = &cobra.Command{
 var configSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set a configuration value",
-	Example: `  zk config set default_project P-XXXXXX
+	Example: `  zk config set default_note 1
   zk config set default_format yaml`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]
 
-		s := store.NewStore(getStorePath(cmd))
+		s, err := openStore(cmd)
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+
 		cfg, err := s.LoadConfig()
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
@@ -46,8 +55,8 @@ var configSetCmd = &cobra.Command{
 		switch key {
 		case "store_path":
 			cfg.StorePath = value
-		case "default_project":
-			cfg.DefaultProject = value
+		case "default_note":
+			cfg.DefaultNote = value
 		case "default_format":
 			if value != "json" && value != "yaml" && value != "md" {
 				return fmt.Errorf("invalid format %q: must be one of json, yaml, md", value)
@@ -56,7 +65,7 @@ var configSetCmd = &cobra.Command{
 		case "default_author":
 			cfg.DefaultAuthor = value
 		default:
-			return fmt.Errorf("unknown config key %q; valid keys: store_path, default_project, default_format, default_author", key)
+			return fmt.Errorf("unknown config key %q; valid keys: store_path, default_note, default_format, default_author", key)
 		}
 
 		if err := s.SaveConfig(cfg); err != nil {

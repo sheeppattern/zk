@@ -411,7 +411,9 @@ func (s *Store) SearchMemos(query string, opts SearchOptions) ([]*model.Memo, er
 	if hasFTS {
 		baseQuery += ` JOIN memos_fts f ON m.id = f.rowid`
 		conditions = append(conditions, "memos_fts MATCH ?")
-		args = append(args, query)
+		// Quote the query to prevent FTS5 syntax errors from special characters.
+		quotedQuery := `"` + strings.ReplaceAll(query, `"`, `""`) + `"`
+		args = append(args, quotedQuery)
 	}
 
 	if opts.NoteID != 0 {

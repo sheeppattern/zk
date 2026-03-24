@@ -10,104 +10,80 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/sheeppattern/zk/internal/model"
-	"github.com/sheeppattern/zk/internal/store"
 	"gopkg.in/yaml.v3"
 )
 
-// NoteExport is a serializable representation of a Note that includes Content,
-// since model.Note tags Content as json:"-" yaml:"-".
-type NoteExport struct {
-	ID        string         `json:"id"                    yaml:"id"`
-	Title     string         `json:"title"                 yaml:"title"`
-	Content   string         `json:"content"               yaml:"content"`
-	Layer     string         `json:"layer,omitempty"        yaml:"layer,omitempty"`
-	Tags      []string       `json:"tags"                  yaml:"tags"`
-	Links     []model.Link   `json:"links"                 yaml:"links"`
-	Metadata  model.Metadata `json:"metadata"              yaml:"metadata"`
-	ProjectID string         `json:"project_id,omitempty"  yaml:"project_id,omitempty"`
+// MemoExport is a serializable representation of a Memo for export.
+type MemoExport struct {
+	ID       int64          `json:"id"       yaml:"id"`
+	Title    string         `json:"title"    yaml:"title"`
+	Content  string         `json:"content"  yaml:"content"`
+	Layer    string         `json:"layer"    yaml:"layer"`
+	Tags     []string       `json:"tags"     yaml:"tags"`
+	NoteID   int64          `json:"note_id"  yaml:"note_id"`
+	Metadata model.Metadata `json:"metadata" yaml:"metadata"`
 }
 
 // ExportData is the top-level structure for exported data.
 type ExportData struct {
 	Version    string        `json:"version"     yaml:"version"`
 	ExportedAt string        `json:"exported_at" yaml:"exported_at"`
-	ProjectID  string        `json:"project_id"  yaml:"project_id"`
-	Notes      []*NoteExport `json:"notes"       yaml:"notes"`
+	NoteID     int64         `json:"note_id"     yaml:"note_id"`
+	Memos      []*MemoExport `json:"memos"       yaml:"memos"`
 }
 
-func noteToExport(n *model.Note) *NoteExport {
-	return &NoteExport{
-		ID:        n.ID,
-		Title:     n.Title,
-		Content:   n.Content,
-		Layer:     n.Layer,
-		Tags:      n.Tags,
-		Links:     n.Links,
-		Metadata:  n.Metadata,
-		ProjectID: n.ProjectID,
-	}
-}
-
-func exportToNote(e *NoteExport) *model.Note {
-	return &model.Note{
-		ID:        e.ID,
-		Title:     e.Title,
-		Content:   e.Content,
-		Layer:     e.Layer,
-		Tags:      e.Tags,
-		Links:     e.Links,
-		Metadata:  e.Metadata,
-		ProjectID: e.ProjectID,
+func memoToExport(m *model.Memo) *MemoExport {
+	return &MemoExport{
+		ID:       m.ID,
+		Title:    m.Title,
+		Content:  m.Content,
+		Layer:    m.Layer,
+		Tags:     m.Tags,
+		NoteID:   m.NoteID,
+		Metadata: m.Metadata,
 	}
 }
 
 var exportCmd = &cobra.Command{
 	Use:   "export",
-	Short: "Export notes to a file",
-	Long: "Export notes as JSON or YAML. Exports all notes by default, or specific notes via --notes flag.",
-	Example: `  zk export --project P-XXXXXX --format yaml --output backup.yaml
-  zk export --project P-XXXXXX --notes N-AAAAAA,N-BBBBBB`,
+	Short: "Export memos to a file",
+	Long:  "Export memos as JSON or YAML. Exports all memos by default, or filter by --note.",
+	Example: `  zk export --note 1 --format yaml --output backup.yaml
+  zk export`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		outputPath, _ := cmd.Flags().GetString("output")
-		noteIDs, _ := cmd.Flags().GetStringSlice("notes")
 
-		s := store.NewStore(getStorePath(cmd))
+		s, err := openStore(cmd)
+		if err != nil {
+			return err
+		}
+		defer s.Close()
 
-		var notes []*model.Note
-
-		if len(noteIDs) > 0 {
-			for _, id := range noteIDs {
-				n, err := s.GetNote(flagProject, id)
-				if err != nil {
-					return fmt.Errorf("get note %s: %w", id, err)
-				}
-				notes = append(notes, n)
-			}
+		var memos []*model.Memo
+		if flagNote != 0 {
+			memos, err = s.ListMemos(flagNote)
 		} else {
-			var err error
-			notes, err = s.ListNotes(flagProject)
-			if err != nil {
-				return fmt.Errorf("list notes: %w", err)
-			}
+			memos, err = s.ListAllMemos()
+		}
+		if err != nil {
+			return fmt.Errorf("list memos: %w", err)
 		}
 
-		exportNotes := make([]*NoteExport, len(notes))
-		for i, n := range notes {
-			exportNotes[i] = noteToExport(n)
+		exportMemos := make([]*MemoExport, len(memos))
+		for i, m := range memos {
+			exportMemos[i] = memoToExport(m)
 		}
 
 		data := ExportData{
-			Version:    "1.0",
+			Version:    "2.0",
 			ExportedAt: time.Now().UTC().Format(time.RFC3339),
-			ProjectID:  flagProject,
-			Notes:      exportNotes,
+			NoteID:     flagNote,
+			Memos:      exportMemos,
 		}
 
 		var out []byte
-		var err error
 
 		format := flagFormat
-		// If output path is specified, infer format from extension if --format wasn't explicitly set.
 		if outputPath != "" && !cmd.Flags().Changed("format") {
 			ext := strings.ToLower(filepath.Ext(outputPath))
 			switch ext {
@@ -124,7 +100,6 @@ var exportCmd = &cobra.Command{
 		case "yaml":
 			out, err = yaml.Marshal(data)
 		default:
-			// Default to JSON for unsupported formats in export context.
 			out, err = json.MarshalIndent(data, "", "  ")
 		}
 		if err != nil {
@@ -135,7 +110,7 @@ var exportCmd = &cobra.Command{
 			if err := os.WriteFile(outputPath, out, 0644); err != nil {
 				return fmt.Errorf("write output file: %w", err)
 			}
-			statusf("exported %d notes to %s", len(notes), outputPath)
+			statusf("exported %d memos to %s", len(memos), outputPath)
 		} else {
 			fmt.Fprintln(os.Stdout, string(out))
 		}
@@ -146,23 +121,15 @@ var exportCmd = &cobra.Command{
 
 var importCmd = &cobra.Command{
 	Use:   "import",
-	Short: "Import notes from a file",
-	Long: "Import notes from a JSON or YAML export file. Use --conflict to control how duplicate IDs are handled.",
-	Example: `  zk import --file backup.yaml --project P-XXXXXX
-  zk import --file data.json --conflict overwrite --project P-XXXXXX`,
+	Short: "Import memos from a file",
+	Long:  "Import memos from a JSON or YAML export file.",
+	Example: `  zk import --file backup.yaml --note 1
+  zk import --file data.json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		filePath, _ := cmd.Flags().GetString("file")
-		conflict, _ := cmd.Flags().GetString("conflict")
 
 		if filePath == "" {
 			return fmt.Errorf("--file flag is required")
-		}
-
-		switch conflict {
-		case "skip", "overwrite", "new-id":
-			// valid
-		default:
-			return fmt.Errorf("invalid --conflict value %q: must be skip, overwrite, or new-id", conflict)
 		}
 
 		raw, err := os.ReadFile(filePath)
@@ -171,8 +138,6 @@ var importCmd = &cobra.Command{
 		}
 
 		var data ExportData
-
-		// Try to detect format by extension, fall back to trying both.
 		ext := strings.ToLower(filepath.Ext(filePath))
 		switch ext {
 		case ".yaml", ".yml":
@@ -180,7 +145,6 @@ var importCmd = &cobra.Command{
 		case ".json":
 			err = json.Unmarshal(raw, &data)
 		default:
-			// Try JSON first, then YAML.
 			err = json.Unmarshal(raw, &data)
 			if err != nil {
 				err = yaml.Unmarshal(raw, &data)
@@ -190,58 +154,41 @@ var importCmd = &cobra.Command{
 			return fmt.Errorf("parse import file: %w", err)
 		}
 
-		s := store.NewStore(getStorePath(cmd))
+		s, err := openStore(cmd)
+		if err != nil {
+			return err
+		}
+		defer s.Close()
 
-		var imported, skipped, overwritten int
-
-		for _, ne := range data.Notes {
-			note := exportToNote(ne)
-
-			// Override project if --project flag is set.
-			if flagProject != "" {
-				note.ProjectID = flagProject
+		var imported int
+		for _, me := range data.Memos {
+			memo := &model.Memo{
+				Title:    me.Title,
+				Content:  me.Content,
+				Layer:    me.Layer,
+				Tags:     me.Tags,
+				NoteID:   me.NoteID,
+				Metadata: me.Metadata,
 			}
-
-			projectID := note.ProjectID
-
-			// Check if note already exists.
-			existing, _ := s.GetNote(projectID, note.ID)
-
-			if existing != nil {
-				switch conflict {
-				case "skip":
-					skipped++
-					continue
-				case "overwrite":
-					if err := s.UpdateNote(note); err != nil {
-						return fmt.Errorf("overwrite note %s: %w", note.ID, err)
-					}
-					overwritten++
-					continue
-				case "new-id":
-					note.ID = model.GenerateID("N")
-				}
+			// Override note ID if --note flag is set.
+			if flagNote != 0 {
+				memo.NoteID = flagNote
 			}
-
-			if err := s.CreateNote(note); err != nil {
-				return fmt.Errorf("create note %s: %w", note.ID, err)
+			if err := s.CreateMemo(memo); err != nil {
+				return fmt.Errorf("create memo: %w", err)
 			}
 			imported++
 		}
 
-		statusf("imported %d notes, skipped %d, overwritten %d", imported, skipped, overwritten)
+		statusf("imported %d memos", imported)
 		return nil
 	},
 }
 
 func init() {
-	// exportCmd flags
 	exportCmd.Flags().String("output", "", "file path to write export data (default: stdout)")
-	exportCmd.Flags().StringSlice("notes", nil, "specific note IDs to export (default: all)")
 
-	// importCmd flags
 	importCmd.Flags().String("file", "", "file path to read import data from (required)")
-	importCmd.Flags().String("conflict", "skip", "conflict resolution: skip, overwrite, new-id")
 	_ = importCmd.MarkFlagRequired("file")
 
 	rootCmd.AddCommand(exportCmd)

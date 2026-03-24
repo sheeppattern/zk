@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,9 +11,9 @@ import (
 	"github.com/sheeppattern/zk/internal/store"
 )
 
-// ExploreNode represents a note in the exploration graph.
+// ExploreNode represents a memo in the exploration graph.
 type ExploreNode struct {
-	ID      string   `json:"id" yaml:"id"`
+	ID      int64    `json:"id" yaml:"id"`
 	Title   string   `json:"title" yaml:"title"`
 	Layer   string   `json:"layer" yaml:"layer"`
 	Tags    []string `json:"tags" yaml:"tags"`
@@ -22,16 +23,16 @@ type ExploreNode struct {
 
 // ExploreEdge represents a directional link in the exploration graph.
 type ExploreEdge struct {
-	NoteID       string  `json:"note_id" yaml:"note_id"`
-	NoteTitle    string  `json:"note_title" yaml:"note_title"`
-	NoteLayer    string  `json:"note_layer" yaml:"note_layer"`
-	NoteSummary  string  `json:"note_summary,omitempty" yaml:"note_summary,omitempty"`
+	MemoID       int64   `json:"memo_id" yaml:"memo_id"`
+	MemoTitle    string  `json:"memo_title" yaml:"memo_title"`
+	MemoLayer    string  `json:"memo_layer" yaml:"memo_layer"`
+	MemoSummary  string  `json:"memo_summary,omitempty" yaml:"memo_summary,omitempty"`
 	RelationType string  `json:"relation_type" yaml:"relation_type"`
 	Weight       float64 `json:"weight" yaml:"weight"`
 	Direction    string  `json:"direction" yaml:"direction"`
 }
 
-// ExploreResult is the structured navigation context for a note.
+// ExploreResult is the structured navigation context for a memo.
 type ExploreResult struct {
 	Current   ExploreNode   `json:"current" yaml:"current"`
 	Outgoing  []ExploreEdge `json:"outgoing" yaml:"outgoing"`
@@ -40,100 +41,83 @@ type ExploreResult struct {
 }
 
 var exploreCmd = &cobra.Command{
-	Use:   "explore <noteID>",
-	Short: "Output structured navigation context for a note",
-	Long:  "Explore the link neighborhood of a note, showing outgoing links, incoming backlinks, and optionally deeper neighbors via BFS.",
-	Example: `  zk explore N-AAAAAA --project P-XXXXXX
-  zk explore N-AAAAAA --depth 2 --include-content --format json
-  zk explore N-AAAAAA --depth 3 --format md`,
+	Use:   "explore <memoID>",
+	Short: "Output structured navigation context for a memo",
+	Long:  "Explore the link neighborhood of a memo, showing outgoing links, incoming backlinks, and optionally deeper neighbors via BFS.",
+	Example: `  zk explore 1
+  zk explore 1 --depth 2 --include-content --format json
+  zk explore 1 --depth 3 --format md`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		noteID := args[0]
+		memoID, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid memo ID %q: %w", args[0], err)
+		}
 		depth, _ := cmd.Flags().GetInt("depth")
 		includeContent, _ := cmd.Flags().GetBool("include-content")
 
-		storePath := getStorePath(cmd)
-		s := store.NewStore(storePath)
-
-		// Load starting note.
-		startNote, err := s.GetNote(flagProject, noteID)
+		s, err := openStore(cmd)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
+			return err
+		}
+		defer s.Close()
+
+		// Load starting memo.
+		startMemo, err := s.GetMemo(memoID)
+		if err != nil {
+			return fmt.Errorf("memo %d not found: %w", memoID, err)
 		}
 
-		// Load all notes across all projects and build noteMap.
-		noteMap := make(map[string]*model.Note)
-		allNotes, err := s.ListNotes(flagProject)
-		if err == nil {
-			for _, n := range allNotes {
-				noteMap[n.ID] = n
-			}
-		}
-		// Include notes from other projects for cross-project traversal.
-		projects, _ := s.ListProjects()
-		for _, p := range projects {
-			if p.ID == flagProject {
-				continue
-			}
-			pNotes, _ := s.ListNotes(p.ID)
-			for _, n := range pNotes {
-				noteMap[n.ID] = n
-			}
-		}
-		if flagProject != "" {
-			gNotes, _ := s.ListNotes("")
-			for _, n := range gNotes {
-				noteMap[n.ID] = n
-			}
+		// Build memo map for neighbor lookup.
+		allMemos, _ := s.ListAllMemos()
+		memoMap := make(map[int64]*model.Memo, len(allMemos))
+		for _, m := range allMemos {
+			memoMap[m.ID] = m
 		}
 
 		// Build Current node.
 		result := ExploreResult{}
-		result.Current = makeExploreNode(startNote, includeContent)
+		result.Current = makeExploreNodeFromMemo(startMemo, includeContent)
 
-		// Outgoing: from note.Links.
+		// Outgoing and incoming links from the store.
+		outgoing, incoming, _ := s.ListLinks(memoID)
+
 		result.Outgoing = []ExploreEdge{}
-		for _, link := range startNote.Links {
+		for _, link := range outgoing {
 			edge := ExploreEdge{
-				NoteID:       link.TargetID,
+				MemoID:       link.TargetID,
 				RelationType: link.RelationType,
 				Weight:       link.Weight,
 				Direction:    "outgoing",
 			}
-			if target, ok := noteMap[link.TargetID]; ok {
-				edge.NoteTitle = target.Title
-				edge.NoteLayer = target.Layer
-				edge.NoteSummary = target.Metadata.Summary
+			if target, ok := memoMap[link.TargetID]; ok {
+				edge.MemoTitle = target.Title
+				edge.MemoLayer = target.Layer
+				edge.MemoSummary = target.Metadata.Summary
 			}
 			result.Outgoing = append(result.Outgoing, edge)
 		}
 
-		// Incoming: scan all notes for links targeting noteID.
 		result.Incoming = []ExploreEdge{}
-		for _, n := range allNotes {
-			if n.ID == noteID {
-				continue
+		for _, link := range incoming {
+			edge := ExploreEdge{
+				MemoID:       link.SourceID,
+				RelationType: link.RelationType,
+				Weight:       link.Weight,
+				Direction:    "incoming",
 			}
-			for _, link := range n.Links {
-				if link.TargetID == noteID {
-					result.Incoming = append(result.Incoming, ExploreEdge{
-						NoteID:       n.ID,
-						NoteTitle:    n.Title,
-						NoteLayer:    n.Layer,
-						NoteSummary:  n.Metadata.Summary,
-						RelationType: link.RelationType,
-						Weight:       link.Weight,
-						Direction:    "incoming",
-					})
-				}
+			if source, ok := memoMap[link.SourceID]; ok {
+				edge.MemoTitle = source.Title
+				edge.MemoLayer = source.Layer
+				edge.MemoSummary = source.Metadata.Summary
 			}
+			result.Incoming = append(result.Incoming, edge)
 		}
 
 		// BFS for neighbors at depth > 1.
 		result.Neighbors = []ExploreNode{}
 		if depth > 1 {
-			result.Neighbors = bfsNeighbors(noteID, noteMap, depth, includeContent)
+			result.Neighbors = bfsNeighborsMemo(s, memoID, memoMap, depth, includeContent)
 		}
 
 		// Output.
@@ -144,97 +128,57 @@ var exploreCmd = &cobra.Command{
 		case "yaml":
 			return f.PrintYAML(result)
 		case "md":
-			return printExploreMD(result, flagProject)
+			return printExploreMD(result)
 		default:
 			return fmt.Errorf("unsupported format: %s", f.Format)
 		}
 	},
 }
 
-// makeExploreNode creates an ExploreNode from a Note.
-func makeExploreNode(n *model.Note, includeContent bool) ExploreNode {
-	tags := n.Tags
+// makeExploreNodeFromMemo creates an ExploreNode from a Memo.
+func makeExploreNodeFromMemo(m *model.Memo, includeContent bool) ExploreNode {
+	tags := m.Tags
 	if tags == nil {
 		tags = []string{}
 	}
 	node := ExploreNode{
-		ID:      n.ID,
-		Title:   n.Title,
-		Layer:   n.Layer,
+		ID:      m.ID,
+		Title:   m.Title,
+		Layer:   m.Layer,
 		Tags:    tags,
-		Summary: n.Metadata.Summary,
+		Summary: m.Metadata.Summary,
 	}
 	if includeContent {
-		node.Content = n.Content
+		node.Content = m.Content
 	}
 	return node
 }
 
-// bfsNeighbors performs BFS from startID up to maxDepth and returns unique
-// neighbor nodes, excluding the start node and direct link targets (depth 1).
-func bfsNeighbors(startID string, noteMap map[string]*model.Note, maxDepth int, includeContent bool) []ExploreNode {
-	type bfsEntry struct {
-		id    string
-		depth int
+// bfsNeighborsMemo performs BFS from startID up to maxDepth using the store's link API.
+func bfsNeighborsMemo(s *store.Store, startID int64, memoMap map[int64]*model.Memo, maxDepth int, includeContent bool) []ExploreNode {
+	bfsLinks, err := s.ListLinksBFS(startID, maxDepth)
+	if err != nil {
+		return []ExploreNode{}
 	}
 
-	visited := map[string]bool{startID: true}
-	queue := []bfsEntry{}
-
-	// Seed BFS with depth-1 neighbors (outgoing + incoming).
-	if startNote, ok := noteMap[startID]; ok {
-		for _, link := range startNote.Links {
-			if !visited[link.TargetID] {
-				visited[link.TargetID] = true
-				queue = append(queue, bfsEntry{id: link.TargetID, depth: 1})
-			}
-		}
-	}
-	// Incoming at depth 1.
-	for _, n := range noteMap {
-		if n.ID == startID {
+	// Collect unique neighbor IDs at depth >= 2.
+	seen := map[int64]bool{}
+	var neighbors []ExploreNode
+	for _, l := range bfsLinks {
+		if l.Depth < 2 {
 			continue
 		}
-		for _, link := range n.Links {
-			if link.TargetID == startID && !visited[n.ID] {
-				visited[n.ID] = true
-				queue = append(queue, bfsEntry{id: n.ID, depth: 1})
-			}
+		// Determine which node is the neighbor.
+		neighborID := l.TargetID
+		if neighborID == startID {
+			neighborID = l.SourceID
 		}
-	}
-
-	// BFS from depth-1 nodes outward.
-	var neighbors []ExploreNode
-	for i := 0; i < len(queue); i++ {
-		entry := queue[i]
-		// Only collect nodes at depth >= 2 as neighbors.
-		if entry.depth >= 2 {
-			if n, ok := noteMap[entry.id]; ok {
-				neighbors = append(neighbors, makeExploreNode(n, includeContent))
-			}
+		if seen[neighborID] {
+			continue
 		}
-		// Expand if not at max depth.
-		if entry.depth < maxDepth {
-			if n, ok := noteMap[entry.id]; ok {
-				for _, link := range n.Links {
-					if !visited[link.TargetID] {
-						visited[link.TargetID] = true
-						queue = append(queue, bfsEntry{id: link.TargetID, depth: entry.depth + 1})
-					}
-				}
-				// Also check incoming links for this node.
-				for _, other := range noteMap {
-					if other.ID == entry.id {
-						continue
-					}
-					for _, link := range other.Links {
-						if link.TargetID == entry.id && !visited[other.ID] {
-							visited[other.ID] = true
-							queue = append(queue, bfsEntry{id: other.ID, depth: entry.depth + 1})
-						}
-					}
-				}
-			}
+		seen[neighborID] = true
+		if m, ok := memoMap[neighborID]; ok {
+			neighbors = append(neighbors, makeExploreNodeFromMemo(m, includeContent))
 		}
 	}
 
@@ -245,10 +189,10 @@ func bfsNeighbors(startID string, noteMap map[string]*model.Note, maxDepth int, 
 }
 
 // printExploreMD renders the ExploreResult in a custom Markdown format.
-func printExploreMD(result ExploreResult, projectID string) error {
+func printExploreMD(result ExploreResult) error {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "# Exploring: %s (%s)\n\n", result.Current.Title, result.Current.ID)
+	fmt.Fprintf(&b, "# Exploring: %s (%d)\n\n", result.Current.Title, result.Current.ID)
 	fmt.Fprintf(&b, "**Layer**: %s\n", result.Current.Layer)
 	fmt.Fprintf(&b, "**Tags**: %s\n", strings.Join(result.Current.Tags, ", "))
 
@@ -261,12 +205,12 @@ func printExploreMD(result ExploreResult, projectID string) error {
 		fmt.Fprintln(&b, "_No outgoing links._")
 	} else {
 		for _, e := range result.Outgoing {
-			if e.NoteSummary != "" {
-				fmt.Fprintf(&b, "- %s → **%s** (%s) — %s [%s, weight: %.2f]\n",
-					result.Current.ID, e.NoteTitle, e.NoteID, e.NoteSummary, e.RelationType, e.Weight)
+			if e.MemoSummary != "" {
+				fmt.Fprintf(&b, "- %d → **%s** (%d) — %s [%s, weight: %.2f]\n",
+					result.Current.ID, e.MemoTitle, e.MemoID, e.MemoSummary, e.RelationType, e.Weight)
 			} else {
-				fmt.Fprintf(&b, "- %s → **%s** (%s) [%s, weight: %.2f]\n",
-					result.Current.ID, e.NoteTitle, e.NoteID, e.RelationType, e.Weight)
+				fmt.Fprintf(&b, "- %d → **%s** (%d) [%s, weight: %.2f]\n",
+					result.Current.ID, e.MemoTitle, e.MemoID, e.RelationType, e.Weight)
 			}
 		}
 	}
@@ -276,12 +220,12 @@ func printExploreMD(result ExploreResult, projectID string) error {
 		fmt.Fprintln(&b, "_No incoming links._")
 	} else {
 		for _, e := range result.Incoming {
-			if e.NoteSummary != "" {
-				fmt.Fprintf(&b, "- **%s** (%s) — %s → %s [%s, weight: %.2f]\n",
-					e.NoteTitle, e.NoteID, e.NoteSummary, result.Current.ID, e.RelationType, e.Weight)
+			if e.MemoSummary != "" {
+				fmt.Fprintf(&b, "- **%s** (%d) — %s → %d [%s, weight: %.2f]\n",
+					e.MemoTitle, e.MemoID, e.MemoSummary, result.Current.ID, e.RelationType, e.Weight)
 			} else {
-				fmt.Fprintf(&b, "- **%s** (%s) → %s [%s, weight: %.2f]\n",
-					e.NoteTitle, e.NoteID, result.Current.ID, e.RelationType, e.Weight)
+				fmt.Fprintf(&b, "- **%s** (%d) → %d [%s, weight: %.2f]\n",
+					e.MemoTitle, e.MemoID, result.Current.ID, e.RelationType, e.Weight)
 			}
 		}
 	}
@@ -289,7 +233,7 @@ func printExploreMD(result ExploreResult, projectID string) error {
 	if len(result.Neighbors) > 0 {
 		fmt.Fprintf(&b, "\n## Neighbors (depth > 1)\n\n")
 		for _, n := range result.Neighbors {
-			fmt.Fprintf(&b, "- **%s** (%s) — layer: %s, tags: %s\n",
+			fmt.Fprintf(&b, "- **%s** (%d) — layer: %s, tags: %s\n",
 				n.Title, n.ID, n.Layer, strings.Join(n.Tags, ", "))
 		}
 	}
@@ -297,25 +241,21 @@ func printExploreMD(result ExploreResult, projectID string) error {
 	// Navigation hints.
 	fmt.Fprintf(&b, "\n---\n\n")
 	fmt.Fprintln(&b, "**Navigation hints:**")
-	connectedIDs := map[string]bool{}
+	connectedIDs := map[int64]bool{}
 	for _, e := range result.Outgoing {
-		connectedIDs[e.NoteID] = true
+		connectedIDs[e.MemoID] = true
 	}
 	for _, e := range result.Incoming {
-		connectedIDs[e.NoteID] = true
+		connectedIDs[e.MemoID] = true
 	}
 	for _, n := range result.Neighbors {
 		connectedIDs[n.ID] = true
 	}
 	if len(connectedIDs) == 0 {
-		fmt.Fprintln(&b, "_No connected notes to explore._")
+		fmt.Fprintln(&b, "_No connected memos to explore._")
 	} else {
 		for id := range connectedIDs {
-			if projectID != "" {
-				fmt.Fprintf(&b, "- `zk explore %s --project %s`\n", id, projectID)
-			} else {
-				fmt.Fprintf(&b, "- `zk explore %s`\n", id)
-			}
+			fmt.Fprintf(&b, "- `zk explore %d`\n", id)
 		}
 	}
 
@@ -326,6 +266,6 @@ func printExploreMD(result ExploreResult, projectID string) error {
 
 func init() {
 	exploreCmd.Flags().Int("depth", 1, "BFS traversal depth for neighbors")
-	exploreCmd.Flags().Bool("include-content", false, "include note content in output")
+	exploreCmd.Flags().Bool("include-content", false, "include memo content in output")
 	rootCmd.AddCommand(exploreCmd)
 }

@@ -208,7 +208,7 @@ var uninstallCmd = &cobra.Command{
 			}
 
 			// Remove store.
-			storePath := getStorePathSilent(cmd)
+			storePath := getStorePath(cmd)
 			if storePath != "" {
 				statusf("removing store at %s", storePath)
 				os.RemoveAll(storePath)

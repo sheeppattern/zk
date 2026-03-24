@@ -11,13 +11,24 @@ import (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize the Zettelkasten storage",
-	Long:    "Creates the root directory structure for the Zettelkasten memory store.",
+	Long:    "Creates the SQLite database for the Zettelkasten memory store.",
 	Example: `  zk init
   zk init --path /custom/store`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		storePath := getStorePath(cmd)
 
-		s := store.NewStore(storePath)
+		// Ensure directory exists.
+		if err := os.MkdirAll(storePath, 0o755); err != nil {
+			return fmt.Errorf("create store directory: %w", err)
+		}
+
+		dbPath := getDBPath(cmd)
+		s, err := store.NewStore(dbPath)
+		if err != nil {
+			return fmt.Errorf("failed to open store: %w", err)
+		}
+		defer s.Close()
+
 		if err := s.Init(); err != nil {
 			return fmt.Errorf("failed to initialize store: %w", err)
 		}

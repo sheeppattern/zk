@@ -4,65 +4,81 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/store"
 )
 
 var tagCmd = &cobra.Command{
 	Use:   "tag",
 	Short: "Manage tags",
-	Long:  "Add, remove, replace, list, and batch-add tags on Zettelkasten notes.",
+	Long:  "Add, remove, replace, list, and batch-add tags on Zettelkasten memos.",
 }
 
 var tagAddCmd = &cobra.Command{
-	Use:   "add <noteID> <tag1> [tag2...]",
-	Short: "Add tags to a note",
-	Example: `  zk tag add N-XXXXXX important urgent --project P-XXXXXX`,
+	Use:   "add <memoID> <tag1> [tag2...]",
+	Short: "Add tags to a memo",
+	Example: `  zk tag add 1 important urgent`,
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		noteID := args[0]
+		memoID, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid memo ID %q: %w", args[0], err)
+		}
 		newTags := args[1:]
 
-		s := store.NewStore(getStorePath(cmd))
-		note, err := s.GetNote(flagProject, noteID)
+		s, err := openStore(cmd)
 		if err != nil {
-			return fmt.Errorf("get note: %w", err)
+			return err
+		}
+		defer s.Close()
+
+		memo, err := s.GetMemo(memoID)
+		if err != nil {
+			return fmt.Errorf("get memo: %w", err)
 		}
 
-		existing := make(map[string]bool, len(note.Tags))
-		for _, t := range note.Tags {
+		existing := make(map[string]bool, len(memo.Tags))
+		for _, t := range memo.Tags {
 			existing[t] = true
 		}
 		for _, t := range newTags {
 			if !existing[t] {
-				note.Tags = append(note.Tags, t)
+				memo.Tags = append(memo.Tags, t)
 				existing[t] = true
 			}
 		}
 
-		if err := s.UpdateNote(note); err != nil {
-			return fmt.Errorf("update note: %w", err)
+		if err := s.UpdateMemo(memo); err != nil {
+			return fmt.Errorf("update memo: %w", err)
 		}
 
-		return getFormatter().PrintNote(note)
+		return getFormatter().PrintMemo(memo)
 	},
 }
 
 var tagRemoveCmd = &cobra.Command{
-	Use:   "remove <noteID> <tag1> [tag2...]",
-	Short: "Remove tags from a note",
-	Example: `  zk tag remove N-XXXXXX draft --project P-XXXXXX`,
+	Use:   "remove <memoID> <tag1> [tag2...]",
+	Short: "Remove tags from a memo",
+	Example: `  zk tag remove 1 draft`,
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		noteID := args[0]
+		memoID, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid memo ID %q: %w", args[0], err)
+		}
 		removeTags := args[1:]
 
-		s := store.NewStore(getStorePath(cmd))
-		note, err := s.GetNote(flagProject, noteID)
+		s, err := openStore(cmd)
 		if err != nil {
-			return fmt.Errorf("get note: %w", err)
+			return err
+		}
+		defer s.Close()
+
+		memo, err := s.GetMemo(memoID)
+		if err != nil {
+			return fmt.Errorf("get memo: %w", err)
 		}
 
 		removeSet := make(map[string]bool, len(removeTags))
@@ -70,89 +86,96 @@ var tagRemoveCmd = &cobra.Command{
 			removeSet[t] = true
 		}
 
-		filtered := make([]string, 0, len(note.Tags))
-		for _, t := range note.Tags {
+		filtered := make([]string, 0, len(memo.Tags))
+		for _, t := range memo.Tags {
 			if !removeSet[t] {
 				filtered = append(filtered, t)
 			}
 		}
-		note.Tags = filtered
+		memo.Tags = filtered
 
-		if err := s.UpdateNote(note); err != nil {
-			return fmt.Errorf("update note: %w", err)
+		if err := s.UpdateMemo(memo); err != nil {
+			return fmt.Errorf("update memo: %w", err)
 		}
 
-		return getFormatter().PrintNote(note)
+		return getFormatter().PrintMemo(memo)
 	},
 }
 
 var tagReplaceCmd = &cobra.Command{
 	Use:   "replace <oldTag> <newTag>",
-	Short: "Replace a tag across all notes in the project",
-	Example: `  zk tag replace old-tag new-tag --project P-XXXXXX`,
+	Short: "Replace a tag across all memos",
+	Example: `  zk tag replace old-tag new-tag`,
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		oldTag := args[0]
 		newTag := args[1]
 
-		s := store.NewStore(getStorePath(cmd))
-		notes, err := s.ListNotes(flagProject)
+		s, err := openStore(cmd)
 		if err != nil {
-			return fmt.Errorf("list notes: %w", err)
+			return err
+		}
+		defer s.Close()
+
+		memos, err := s.ListAllMemos()
+		if err != nil {
+			return fmt.Errorf("list memos: %w", err)
 		}
 
 		affected := 0
-		for _, note := range notes {
-			// Build new tag list: replace all occurrences of oldTag with newTag (once).
+		for _, memo := range memos {
 			var newTags []string
 			replaced := false
 			addedNew := false
-			for _, t := range note.Tags {
+			for _, t := range memo.Tags {
 				if t == oldTag {
 					replaced = true
 					if !addedNew {
 						newTags = append(newTags, newTag)
 						addedNew = true
 					}
-					// skip duplicate oldTags
 				} else if t == newTag {
 					if !addedNew {
 						newTags = append(newTags, t)
 						addedNew = true
 					}
-					// skip duplicate newTags if oldTag was already replaced
 				} else {
 					newTags = append(newTags, t)
 				}
 			}
 			if replaced {
-				note.Tags = newTags
-				if err := s.UpdateNote(note); err != nil {
-					return fmt.Errorf("update note %s: %w", note.ID, err)
+				memo.Tags = newTags
+				if err := s.UpdateMemo(memo); err != nil {
+					return fmt.Errorf("update memo %d: %w", memo.ID, err)
 				}
 				affected++
 			}
 		}
 
-		statusf("Replaced tag %q with %q in %d note(s)", oldTag, newTag, affected)
+		statusf("Replaced tag %q with %q in %d memo(s)", oldTag, newTag, affected)
 		return nil
 	},
 }
 
 var tagListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all unique tags in the project",
-	Example: `  zk tag list --project P-XXXXXX`,
+	Short: "List all unique tags",
+	Example: `  zk tag list`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s := store.NewStore(getStorePath(cmd))
-		notes, err := s.ListNotes(flagProject)
+		s, err := openStore(cmd)
 		if err != nil {
-			return fmt.Errorf("list notes: %w", err)
+			return err
+		}
+		defer s.Close()
+
+		memos, err := s.ListAllMemos()
+		if err != nil {
+			return fmt.Errorf("list memos: %w", err)
 		}
 
 		tagSet := make(map[string]bool)
-		for _, note := range notes {
-			for _, t := range note.Tags {
+		for _, memo := range memos {
+			for _, t := range memo.Tags {
 				tagSet[t] = true
 			}
 		}
@@ -183,25 +206,34 @@ var tagListCmd = &cobra.Command{
 }
 
 var tagBatchAddCmd = &cobra.Command{
-	Use:   "batch-add <tag> <noteID1> [noteID2...]",
-	Short: "Add a tag to multiple notes",
-	Example: `  zk tag batch-add reviewed N-AAAAAA N-BBBBBB N-CCCCCC --project P-XXXXXX`,
+	Use:   "batch-add <tag> <memoID1> [memoID2...]",
+	Short: "Add a tag to multiple memos",
+	Example: `  zk tag batch-add reviewed 1 2 3`,
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tag := args[0]
-		noteIDs := args[1:]
+		memoIDStrs := args[1:]
 
-		s := store.NewStore(getStorePath(cmd))
+		s, err := openStore(cmd)
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+
 		affected := 0
-
-		for _, noteID := range noteIDs {
-			note, err := s.GetNote(flagProject, noteID)
+		for _, idStr := range memoIDStrs {
+			memoID, err := strconv.ParseInt(idStr, 10, 64)
 			if err != nil {
-				return fmt.Errorf("get note %s: %w", noteID, err)
+				return fmt.Errorf("invalid memo ID %q: %w", idStr, err)
+			}
+
+			memo, err := s.GetMemo(memoID)
+			if err != nil {
+				return fmt.Errorf("get memo %d: %w", memoID, err)
 			}
 
 			hasTag := false
-			for _, t := range note.Tags {
+			for _, t := range memo.Tags {
 				if t == tag {
 					hasTag = true
 					break
@@ -211,14 +243,14 @@ var tagBatchAddCmd = &cobra.Command{
 				continue
 			}
 
-			note.Tags = append(note.Tags, tag)
-			if err := s.UpdateNote(note); err != nil {
-				return fmt.Errorf("update note %s: %w", noteID, err)
+			memo.Tags = append(memo.Tags, tag)
+			if err := s.UpdateMemo(memo); err != nil {
+				return fmt.Errorf("update memo %d: %w", memoID, err)
 			}
 			affected++
 		}
 
-		statusf("Added tag %q to %d note(s)", tag, affected)
+		statusf("Added tag %q to %d memo(s)", tag, affected)
 		return nil
 	},
 }

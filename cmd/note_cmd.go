@@ -1,429 +1,180 @@
 package cmd
 
 import (
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/sheeppattern/zk/internal/model"
-	"github.com/sheeppattern/zk/internal/store"
-	"gopkg.in/yaml.v3"
 )
 
-// NoteTemplate defines a reusable template for note creation.
-type NoteTemplate struct {
-	TitlePrefix     string   `yaml:"title_prefix"`
-	DefaultTags     []string `yaml:"default_tags"`
-	DefaultStatus   string   `yaml:"default_status"`
-	ContentTemplate string   `yaml:"content_template"`
+// NoteDetail wraps a Note with computed statistics for get output.
+type NoteDetail struct {
+	ID          int64  `json:"id" yaml:"id"`
+	Name        string `json:"name" yaml:"name"`
+	Description string `json:"description" yaml:"description"`
+	CreatedAt   string `json:"created_at" yaml:"created_at"`
+	UpdatedAt   string `json:"updated_at" yaml:"updated_at"`
+	MemoCount   int    `json:"memo_count" yaml:"memo_count"`
+	LinkCount   int    `json:"link_count" yaml:"link_count"`
 }
 
 var noteCmd = &cobra.Command{
 	Use:   "note",
 	Short: "Manage notes",
-	Long:  "Create, read, update, delete, and list Zettelkasten notes.",
+	Long:  "Create, list, get, and delete notes (groups of memos) in the Zettelkasten store.",
 }
 
 var noteCreateCmd = &cobra.Command{
-	Use:   "create",
+	Use:   "create <name>",
 	Short: "Create a new note",
-	Example: `  zk note create --title "Discovery" --content "Found something" --tags "research,important"
-  zk note create --title "Idea" --content "..." --project P-XXXXXX
-  zk note create --title "Paper Notes" --template research --project P-XXXXXX
-  zk note create --title "Insight" --content "..." --layer abstract`,
+	Example: `  zk note create "my-research" --description "Research note"`,
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		title, _ := cmd.Flags().GetString("title")
-		content, _ := cmd.Flags().GetString("content")
-		tags, _ := cmd.Flags().GetStringSlice("tags")
-		templateName, _ := cmd.Flags().GetString("template")
-		layerFlag, _ := cmd.Flags().GetString("layer")
-		summary, _ := cmd.Flags().GetString("summary")
-		authorFlag, _ := cmd.Flags().GetString("author")
+		name := args[0]
+		description, _ := cmd.Flags().GetString("description")
 
-		// Validate layer flag.
-		if layerFlag != model.LayerConcrete && layerFlag != model.LayerAbstract {
-			return fmt.Errorf("invalid layer %q: must be %q or %q", layerFlag, model.LayerConcrete, model.LayerAbstract)
+		s, err := openStore(cmd)
+		if err != nil {
+			return err
 		}
+		defer s.Close()
 
-		storePath := getStorePath(cmd)
-
-		// Apply template if specified.
-		if templateName != "" {
-			tmplPath := filepath.Join(storePath, "templates", templateName+".yaml")
-			tmplData, err := os.ReadFile(tmplPath)
-			if err != nil {
-				return fmt.Errorf("template %q not found at %s: %w", templateName, tmplPath, err)
-			}
-			var tmpl NoteTemplate
-			if err := yaml.Unmarshal(tmplData, &tmpl); err != nil {
-				return fmt.Errorf("parse template %q: %w", templateName, err)
-			}
-
-			// Prepend title_prefix to --title.
-			if tmpl.TitlePrefix != "" {
-				title = tmpl.TitlePrefix + title
-			}
-
-			// Merge default_tags with --tags (template tags first, user tags appended).
-			if len(tmpl.DefaultTags) > 0 {
-				merged := make([]string, 0, len(tmpl.DefaultTags)+len(tags))
-				merged = append(merged, tmpl.DefaultTags...)
-				for _, t := range tags {
-					// Avoid duplicates from user tags.
-					dup := false
-					for _, dt := range tmpl.DefaultTags {
-						if strings.EqualFold(t, dt) {
-							dup = true
-							break
-						}
-					}
-					if !dup {
-						merged = append(merged, t)
-					}
-				}
-				tags = merged
-			}
-
-			// If --content is empty, use content_template as content.
-			if content == "" && tmpl.ContentTemplate != "" {
-				content = tmpl.ContentTemplate
-			}
-
-			// Set status from template if not overridden by a flag (noteCreateCmd has no --status flag,
-			// so template status always applies when present).
-			if tmpl.DefaultStatus != "" {
-				// Will be applied after note creation below.
-			}
-
-			note := model.NewNote(title, content, tags)
-			note.Layer = layerFlag
-
-			if summary != "" {
-				note.Metadata.Summary = summary
-			}
-
-			if tmpl.DefaultStatus != "" {
-				note.Metadata.Status = tmpl.DefaultStatus
-			}
-
-			if flagProject != "" {
-				note.ProjectID = flagProject
-			}
-
-			s := store.NewStore(storePath)
-
-			// Resolve author: --author flag > config default_author > "user".
-			tmplAuthor := authorFlag
-			if tmplAuthor == "" {
-				if cfg, err := s.LoadConfig(); err == nil && cfg.DefaultAuthor != "" {
-					tmplAuthor = cfg.DefaultAuthor
-				} else {
-					tmplAuthor = "user"
-				}
-			}
-			note.Metadata.Author = tmplAuthor
-
-			if err := s.CreateNote(note); err != nil {
-				return fmt.Errorf("create note: %w", err)
-			}
-
-			return getFormatter().PrintNote(note)
-		}
-
-		note := model.NewNote(title, content, tags)
-		note.Layer = layerFlag
-
-		if summary != "" {
-			note.Metadata.Summary = summary
-		}
-
-		if flagProject != "" {
-			note.ProjectID = flagProject
-		}
-
-		s := store.NewStore(storePath)
-
-		// Resolve author: --author flag > config default_author > "user".
-		author := authorFlag
-		if author == "" {
-			if cfg, err := s.LoadConfig(); err == nil && cfg.DefaultAuthor != "" {
-				author = cfg.DefaultAuthor
-			} else {
-				author = "user"
-			}
-		}
-		note.Metadata.Author = author
-
-		if err := s.CreateNote(note); err != nil {
+		n, err := s.CreateNote(name, description)
+		if err != nil {
 			return fmt.Errorf("create note: %w", err)
 		}
 
-		return getFormatter().PrintNote(note)
-	},
-}
-
-var noteGetCmd = &cobra.Command{
-	Use:   "get <id>",
-	Short: "Get a note by ID",
-	Example: `  zk note get N-XXXXXX --project P-XXXXXX
-  zk note get N-XXXXXX --format md`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		noteID := args[0]
-
-		s := store.NewStore(getStorePath(cmd))
-		note, err := s.GetNote(flagProject, noteID)
-		if err != nil {
-			return fmt.Errorf("note %s not found in project %s (check note ID and --project flag)", noteID, flagProject)
-		}
-
-		return getFormatter().PrintNote(note)
+		return getFormatter().PrintNote(n)
 	},
 }
 
 var noteListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all notes",
-	Example: `  zk note list --project P-XXXXXX
-  zk note list --format md
-  zk note list --layer abstract`,
+	Example: `  zk note list
+  zk note list --format md`,
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		layerFilter, _ := cmd.Flags().GetString("layer")
+		s, err := openStore(cmd)
+		if err != nil {
+			return err
+		}
+		defer s.Close()
 
-		s := store.NewStore(getStorePath(cmd))
-		notes, err := s.ListNotes(flagProject)
+		notes, err := s.ListNotes()
 		if err != nil {
 			return fmt.Errorf("list notes: %w", err)
-		}
-
-		if layerFilter != "" {
-			filtered := make([]*model.Note, 0, len(notes))
-			for _, n := range notes {
-				if n.Layer == layerFilter {
-					filtered = append(filtered, n)
-				}
-			}
-			notes = filtered
 		}
 
 		return getFormatter().PrintNotes(notes)
 	},
 }
 
-var noteUpdateCmd = &cobra.Command{
-	Use:   "update <id>",
-	Short: "Update an existing note",
-	Example: `  zk note update N-XXXXXX --title "New Title" --project P-XXXXXX
-  zk note update N-XXXXXX --tags "new-tag" --status archived`,
-	Args: cobra.ExactArgs(1),
+var noteGetCmd = &cobra.Command{
+	Use:   "get <id>",
+	Short: "Get a note by ID",
+	Example: `  zk note get 1
+  zk note get 1 --format md`,
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		noteID := args[0]
-
-		s := store.NewStore(getStorePath(cmd))
-		note, err := s.GetNote(flagProject, noteID)
+		id, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
-			return fmt.Errorf("note %s not found in project %s (check note ID and --project flag)", noteID, flagProject)
+			return fmt.Errorf("invalid note ID %q: %w", args[0], err)
 		}
 
-		if cmd.Flags().Changed("title") {
-			note.Title, _ = cmd.Flags().GetString("title")
+		s, err := openStore(cmd)
+		if err != nil {
+			return err
 		}
-		if cmd.Flags().Changed("content") {
-			note.Content, _ = cmd.Flags().GetString("content")
-		}
-		if cmd.Flags().Changed("tags") {
-			note.Tags, _ = cmd.Flags().GetStringSlice("tags")
-		}
-		if cmd.Flags().Changed("status") {
-			note.Metadata.Status, _ = cmd.Flags().GetString("status")
-		}
-		if cmd.Flags().Changed("summary") {
-			note.Metadata.Summary, _ = cmd.Flags().GetString("summary")
-		}
-		if cmd.Flags().Changed("author") {
-			note.Metadata.Author, _ = cmd.Flags().GetString("author")
+		defer s.Close()
+
+		n, err := s.GetNote(id)
+		if err != nil {
+			return fmt.Errorf("get note: %w", err)
 		}
 
-		if err := s.UpdateNote(note); err != nil {
-			return fmt.Errorf("update note: %w", err)
+		// Gather memo and link statistics.
+		memos, err := s.ListMemos(id)
+		if err != nil {
+			return fmt.Errorf("list memos for note: %w", err)
 		}
 
-		return getFormatter().PrintNote(note)
+		linkCount := 0
+		for _, m := range memos {
+			out, in, lErr := s.ListLinks(m.ID)
+			if lErr == nil {
+				linkCount += len(out) + len(in)
+			}
+		}
+
+		detail := NoteDetail{
+			ID:          n.ID,
+			Name:        n.Name,
+			Description: n.Description,
+			CreatedAt:   n.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:   n.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			MemoCount:   len(memos),
+			LinkCount:   linkCount,
+		}
+
+		f := getFormatter()
+		switch f.Format {
+		case "json":
+			return f.PrintJSON(detail)
+		case "yaml":
+			return f.PrintYAML(detail)
+		case "md":
+			var b strings.Builder
+			fmt.Fprintf(&b, "# %s\n\n", n.Name)
+			fmt.Fprintf(&b, "**ID**: %d\n", n.ID)
+			fmt.Fprintf(&b, "**Description**: %s\n", n.Description)
+			fmt.Fprintf(&b, "**Created**: %s\n", n.CreatedAt.Format("2006-01-02 15:04:05"))
+			fmt.Fprintf(&b, "**Memos**: %d\n", len(memos))
+			fmt.Fprintf(&b, "**Links**: %d\n", linkCount)
+			fmt.Fprintln(&b)
+			_, err := fmt.Fprint(os.Stdout, b.String())
+			return err
+		default:
+			return fmt.Errorf("unsupported format: %s", f.Format)
+		}
 	},
 }
 
 var noteDeleteCmd = &cobra.Command{
 	Use:   "delete <id>",
 	Short: "Delete a note by ID",
-	Example: `  zk note delete N-XXXXXX --project P-XXXXXX
-  zk note delete N-XXXXXX --force --project P-XXXXXX`,
-	Args: cobra.ExactArgs(1),
+	Example: `  zk note delete 1`,
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		noteID := args[0]
-		force, _ := cmd.Flags().GetBool("force")
-
-		s := store.NewStore(getStorePath(cmd))
-
-		if !force {
-			// Load the target note to confirm it exists.
-			if _, err := s.GetNote(flagProject, noteID); err != nil {
-				return fmt.Errorf("delete note: %w", err)
-			}
-			// Scan for backlinks pointing to this note across all projects.
-			allNotes, _ := s.ListNotesPartial(flagProject)
-			projects, projErr := s.ListProjects()
-			if projErr == nil {
-				for _, p := range projects {
-					if p.ID == flagProject {
-						continue
-					}
-					pNotes, _ := s.ListNotesPartial(p.ID)
-					allNotes = append(allNotes, pNotes...)
-				}
-			}
-			if flagProject != "" {
-				gNotes, _ := s.ListNotesPartial("")
-				allNotes = append(allNotes, gNotes...)
-			}
-			var backlinkCount int
-			for _, n := range allNotes {
-				for _, link := range n.Links {
-					if link.TargetID == noteID {
-						backlinkCount++
-					}
-				}
-			}
-			if backlinkCount > 0 {
-				fmt.Fprintf(os.Stderr, "Warning: %d backlink(s) point to note %s\n", backlinkCount, noteID)
-				return fmt.Errorf("note %s has backlinks; use --force to delete anyway", noteID)
-			}
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid note ID %q: %w", args[0], err)
 		}
 
-		if err := s.DeleteNote(flagProject, noteID); err != nil {
+		s, err := openStore(cmd)
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+
+		if err := s.DeleteNote(id); err != nil {
 			return fmt.Errorf("delete note: %w", err)
 		}
 
-		statusf("Deleted note %s", noteID)
+		statusf("deleted note %d", id)
 		return nil
-	},
-}
-
-var noteMoveCmd = &cobra.Command{
-	Use:   "move <noteID> <targetProject>",
-	Short: "Move a note to a different project",
-	Example: `  zk note move N-XXXXXX P-TARGET --project P-SOURCE
-  zk note move N-XXXXXX P-TARGET`,
-	Args: cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		noteID := args[0]
-		targetProject := args[1]
-
-		s := store.NewStore(getStorePath(cmd))
-
-		if err := s.MoveNote(noteID, flagProject, targetProject); err != nil {
-			return fmt.Errorf("note %s not found in project %s (verify the note exists with: zk note list --project %s)",
-				noteID, flagProject, flagProject)
-		}
-
-		statusf("moved note %s from project %s to %s", noteID, flagProject, targetProject)
-		return nil
-	},
-}
-
-var noteRandomCmd = &cobra.Command{
-	Use:   "random",
-	Short: "Pick a random note from all notes across every project",
-	Example: `  zk note random
-  zk note random --layer abstract
-  zk note random --format md`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		layerFilter, _ := cmd.Flags().GetString("layer")
-
-		s := store.NewStore(getStorePath(cmd))
-
-		// Collect notes from all projects + global.
-		var allNotes []*model.Note
-		projects, err := s.ListProjects()
-		if err != nil {
-			debugf("list projects: %v", err)
-		}
-		for _, p := range projects {
-			pNotes, pErr := s.ListNotes(p.ID)
-			if pErr != nil {
-				debugf("list notes for project %s: %v", p.ID, pErr)
-				continue
-			}
-			allNotes = append(allNotes, pNotes...)
-		}
-		gNotes, gErr := s.ListNotes("")
-		if gErr != nil {
-			debugf("list global notes: %v", gErr)
-		}
-		allNotes = append(allNotes, gNotes...)
-
-		if layerFilter != "" {
-			filtered := make([]*model.Note, 0, len(allNotes))
-			for _, n := range allNotes {
-				if n.Layer == layerFilter {
-					filtered = append(filtered, n)
-				}
-			}
-			allNotes = filtered
-		}
-
-		if len(allNotes) == 0 {
-			return fmt.Errorf("no notes found")
-		}
-
-		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(allNotes))))
-		if err != nil {
-			return fmt.Errorf("random selection: %w", err)
-		}
-
-		return getFormatter().PrintNote(allNotes[idx.Int64()])
 	},
 }
 
 func init() {
-	// noteRandomCmd flags
-	noteRandomCmd.Flags().String("layer", "", "filter by layer (concrete, abstract)")
+	noteCreateCmd.Flags().String("description", "", "note description")
 
-	// noteCreateCmd flags
-	noteCreateCmd.Flags().String("title", "", "note title (required)")
-	noteCreateCmd.Flags().String("content", "", "note content (required)")
-	noteCreateCmd.Flags().StringSlice("tags", nil, "comma-separated tags")
-	noteCreateCmd.Flags().String("template", "", "template name (loads from {store}/templates/{name}.yaml)")
-	noteCreateCmd.Flags().String("layer", model.LayerConcrete, "note layer (concrete, abstract)")
-	noteCreateCmd.Flags().String("summary", "", "brief summary for quick scanning")
-	noteCreateCmd.Flags().String("author", "", "note author (e.g., claude, gemini, human)")
-	_ = noteCreateCmd.MarkFlagRequired("title")
-
-	// noteUpdateCmd flags
-	noteUpdateCmd.Flags().String("title", "", "new title")
-	noteUpdateCmd.Flags().String("content", "", "new content")
-	noteUpdateCmd.Flags().StringSlice("tags", nil, "new tags")
-	noteUpdateCmd.Flags().String("status", "", "new status (active, archived)")
-	noteUpdateCmd.Flags().String("summary", "", "brief summary for quick scanning")
-	noteUpdateCmd.Flags().String("author", "", "note author (e.g., claude, gemini, human)")
-
-	// noteListCmd flags
-	noteListCmd.Flags().String("layer", "", "filter by layer (concrete, abstract)")
-
-	// noteDeleteCmd flags
-	noteDeleteCmd.Flags().Bool("force", false, "force deletion even if backlinks exist")
-
-	// Register subcommands
 	noteCmd.AddCommand(noteCreateCmd)
-	noteCmd.AddCommand(noteGetCmd)
 	noteCmd.AddCommand(noteListCmd)
-	noteCmd.AddCommand(noteUpdateCmd)
+	noteCmd.AddCommand(noteGetCmd)
 	noteCmd.AddCommand(noteDeleteCmd)
-	noteCmd.AddCommand(noteMoveCmd)
-	noteCmd.AddCommand(noteRandomCmd)
 
 	rootCmd.AddCommand(noteCmd)
 }
