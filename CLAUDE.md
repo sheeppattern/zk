@@ -61,51 +61,45 @@ When adding or modifying features, always write tests:
 
 ## Architecture
 
-Zettelkasten memory CLI for AI agents. Single binary Go app using cobra.
+Zettelkasten memory CLI for AI agents. Single binary Go app using cobra + SQLite.
 
 ### Layers
 
 ```
-main.go → cmd/ → internal/store/ → filesystem
-                → internal/model/    (data structs)
+main.go → cmd/ → internal/store/ → SQLite (store.db)
+                → internal/model/    (Memo, Note, Link, Config)
                 → internal/output/   (JSON/YAML/MD rendering)
 ```
 
-- **cmd/**: Each file is one cobra command group. All commands share global state via `flagProject`, `flagFormat`, `flagVerbose`, `flagQuiet` defined in `root.go`. Use `statusf()` for stderr status, `debugf()` for verbose output.
-- **internal/model/**: Note, Link, Project, Config structs. `Note.Content` is tagged `yaml:"-" json:"-"` — stored in Markdown body, not frontmatter. `NoteFrontmatter` is the serializable mirror. `Note.Layer` distinguishes "concrete" (default) from "abstract".
-- **internal/store/**: File I/O layer. Notes are `.md` files with YAML frontmatter. Frontmatter parsing is manual string splitting. Uses `atomicWriteFile` for crash-safe writes. **When adding new Note fields, update both `marshalNote` and `unmarshalNote` to copy the field to/from `NoteFrontmatter`.**
-- **internal/output/**: Formatter dispatches to JSON/YAML/MD renderers. Uses `noteView` wrapper to re-include Content in output.
+- **cmd/**: Each file is one cobra command group. Global state: `flagNote` (int64), `flagFormat`, `flagVerbose`, `flagQuiet` in `root.go`. `openStore(cmd)` opens DB + calls Init(). Use `statusf()`/`debugf()` for stderr.
+- **internal/model/**: `Memo` (atomic record), `Note` (container), `Link` (source_id→target_id), `Config`. All IDs are `int64` autoincrement. No YAML tags (JSON only).
+- **internal/store/**: SQLite layer via `modernc.org/sqlite` (pure Go, no CGO). FTS5 for full-text search. WAL mode, `SetMaxOpenConns(1)`. Links stored once (no bidirectional duplication).
+- **internal/output/**: Formatter dispatches to JSON/YAML/MD renderers. Uses `memoView` wrapper.
 
 ### Key Patterns
 
-**Store path resolution** (`getStorePath` in root.go): `--path` flag → `ZKMEMORY_PATH` env → `~/.zk-memory`
+**Store path resolution** (`getStorePath` in root.go): `--path` flag → `ZKMEMORY_PATH` env → `~/.zk-memory`. DB file: `{store_path}/store.db`.
 
-**Project scoping**: Empty `flagProject` = global (`global/notes/`), non-empty = `projects/{id}/notes/`.
+**Note scoping**: `flagNote=0` = global, non-zero = specific note container.
 
-**Bidirectional links**: `link add` writes Link on BOTH notes. Backlink queries scan all notes O(n). Cross-project via `--target-project`.
+**Links**: Single INSERT into `links` table. Both directions queried via `WHERE source_id=? OR target_id=?`. BFS traversal capped at depth 5, 1000 results.
 
-**Note layers**: `concrete` (facts/records) vs `abstract` (insights/questions). `zk reflect` analyzes concrete notes and suggests abstract ones.
+**Memo layers**: `concrete` (facts) vs `abstract` (insights). `zk reflect` analyzes concrete memos and suggests abstract ones.
 
-**Output contract**: stdout = pure data, stderr = status/errors. Use `statusf()`/`debugf()`, never raw `fmt.Fprintf(os.Stderr, ...)`.
+**FTS5 search**: `memos_fts` virtual table synced via triggers. BM25 ranking (title=10, content=1, tags=5, summary=3). Tag filtering via `json_each()`.
 
-**Multi-agent skills**: `zk init` generates instruction files for 6 AI tools (Claude, Gemini, Codex, Cursor, Copilot, Windsurf). Content is shared; only frontmatter wrappers differ per tool.
+**Output contract**: stdout = pure data, stderr = status/errors.
 
-### Storage Layout
+**Multi-agent skills**: `zk init` generates instruction files for AI tools. Content is shared via `zkInstructionContent` in `cmd/skill_cmd.go`.
+
+**Web GUI**: `zk serve` embeds `cmd/web/` (HTML+CSS+JS) via `go:embed`. API at `/api/`. Default bind: `127.0.0.1:8080`.
+
+### Storage
 
 ```
 {store_path}/
-├── config.yaml
-├── projects/{project-id}/
-│   ├── project.yaml
-│   └── notes/{note-id}.md
-├── global/notes/{note-id}.md
-├── trash/                      # soft-deleted notes
-└── templates/                  # note templates (.yaml)
+└── store.db     # SQLite: notes, memos, memos_fts, links, trash, config
 ```
-
-### ID Generation
-
-`model.GenerateID(prefix)` produces IDs like `N-72F576` (prefix + 6 uppercase hex chars from UUID). Prefixes: `N-` for notes, `P-` for projects.
 
 ### Module Path
 
