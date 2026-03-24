@@ -221,6 +221,37 @@ func TestDeleteMemoToTrash(t *testing.T) {
 	}
 }
 
+func TestDeleteMemoCleanupLinks(t *testing.T) {
+	s := newTestStore(t)
+
+	m1 := &model.Memo{Title: "M1"}
+	m2 := &model.Memo{Title: "M2"}
+	if err := s.CreateMemo(m1); err != nil {
+		t.Fatalf("CreateMemo(m1) error: %v", err)
+	}
+	if err := s.CreateMemo(m2); err != nil {
+		t.Fatalf("CreateMemo(m2) error: %v", err)
+	}
+
+	if err := s.AddLink(m1.ID, m2.ID, model.RelSupports, 0.8); err != nil {
+		t.Fatalf("AddLink() error: %v", err)
+	}
+
+	// Delete m1 — links should also be removed.
+	if err := s.DeleteMemo(m1.ID); err != nil {
+		t.Fatalf("DeleteMemo() error: %v", err)
+	}
+
+	// Verify links are cleaned up.
+	outgoing, incoming, err := s.ListLinks(m2.ID)
+	if err != nil {
+		t.Fatalf("ListLinks() error: %v", err)
+	}
+	if len(outgoing)+len(incoming) != 0 {
+		t.Fatalf("expected 0 links after memo delete, got outgoing=%d incoming=%d", len(outgoing), len(incoming))
+	}
+}
+
 func TestMoveMemo(t *testing.T) {
 	s := newTestStore(t)
 

@@ -35,7 +35,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Note: we don't defer s.Close() here because the server runs until killed.
+	defer s.Close()
 
 	mux := http.NewServeMux()
 

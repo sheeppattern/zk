@@ -218,7 +218,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 		for _, l := range n.Frontmatter.Links {
 			tgtID, ok := noteMap[l.TargetID]
 			if !ok {
-				debugf("skipping link %s→%s: target not found", n.Frontmatter.ID, l.TargetID)
+				statusf("warning: skipping link %s→%s: target not found", n.Frontmatter.ID, l.TargetID)
 				continue
 			}
 			// Deduplicate: old store has bidirectional links (A→B and B→A).

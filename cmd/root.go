@@ -28,26 +28,6 @@ var rootCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Auto-update skill files if the binary is newer than on-disk versions.
 		AutoUpdateSkillsIfNeeded()
-
-		// Apply default note from config if --note not explicitly set.
-		if !cmd.Flags().Changed("note") {
-			dbPath := getDBPath(cmd)
-			if dbPath != "" {
-				if _, err := os.Stat(dbPath); err == nil {
-					s, err := store.NewStore(dbPath)
-					if err == nil {
-						defer s.Close()
-						if cfg, err := s.LoadConfig(); err == nil && cfg.DefaultNote != "" {
-							parsed, err := strconv.ParseInt(cfg.DefaultNote, 10, 64)
-							if err == nil {
-								flagNote = parsed
-								debugf("using default note from config: %d", flagNote)
-							}
-						}
-					}
-				}
-			}
-		}
 	},
 }
 
@@ -106,6 +86,7 @@ func getDBPath(cmd *cobra.Command) string {
 }
 
 // openStore opens the SQLite database, ensures schema exists, and returns a Store.
+// It also applies the default note from config if --note was not explicitly set.
 // Caller must defer Close().
 func openStore(cmd *cobra.Command) (*store.Store, error) {
 	dbPath := getDBPath(cmd)
@@ -116,6 +97,15 @@ func openStore(cmd *cobra.Command) (*store.Store, error) {
 	if err := s.Init(); err != nil {
 		s.Close()
 		return nil, fmt.Errorf("init store: %w", err)
+	}
+	// Apply default note from config if --note not explicitly set.
+	if !cmd.Flags().Changed("note") {
+		if cfg, err := s.LoadConfig(); err == nil && cfg.DefaultNote != "" {
+			if parsed, err := strconv.ParseInt(cfg.DefaultNote, 10, 64); err == nil {
+				flagNote = parsed
+				debugf("using default note from config: %d", flagNote)
+			}
+		}
 	}
 	return s, nil
 }
