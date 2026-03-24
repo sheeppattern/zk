@@ -23,6 +23,26 @@ type apiMemoView struct {
 	Tags     []string       `json:"tags"`
 	NoteID   int64          `json:"note_id"`
 	Metadata model.Metadata `json:"metadata"`
+	Links    *apiMemoLinks  `json:"links,omitempty"`
+}
+
+type apiMemoLinks struct {
+	Outgoing []model.Link `json:"outgoing"`
+	Incoming []model.Link `json:"incoming"`
+}
+
+func (h *serveHandler) attachLinks(view *apiMemoView) {
+	outgoing, incoming, err := h.store.ListLinks(view.ID)
+	if err != nil {
+		return
+	}
+	if outgoing == nil {
+		outgoing = []model.Link{}
+	}
+	if incoming == nil {
+		incoming = []model.Link{}
+	}
+	view.Links = &apiMemoLinks{Outgoing: outgoing, Incoming: incoming}
 }
 
 func toAPIMemoView(m *model.Memo) apiMemoView {
@@ -131,7 +151,9 @@ func (h *serveHandler) handleMemo(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "memo not found", 404)
 			return
 		}
-		jsonResponse(w, toAPIMemoView(memo))
+		view := toAPIMemoView(memo)
+		h.attachLinks(&view)
+		jsonResponse(w, view)
 
 	case "PUT":
 		var body struct {
@@ -228,7 +250,9 @@ func (h *serveHandler) handleAllData(w http.ResponseWriter, r *http.Request) {
 	allMemos, _ := h.store.ListAllMemos()
 	views := make([]apiMemoView, 0, len(allMemos))
 	for _, m := range allMemos {
-		views = append(views, toAPIMemoView(m))
+		v := toAPIMemoView(m)
+		h.attachLinks(&v)
+		views = append(views, v)
 	}
 
 	jsonResponse(w, map[string]interface{}{

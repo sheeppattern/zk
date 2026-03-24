@@ -175,16 +175,57 @@ async function removeTag(tag) {
 }
 
 function renderLinks() {
-  /* Links are NOT embedded in memo objects in the new API.
-     Show a placeholder message. Links are stored in a separate table. */
   const area = document.getElementById('linksArea');
-  area.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">Links are managed separately</div>';
+  const links = S.selected && S.selected.links;
+  if (!links || (links.outgoing.length === 0 && links.incoming.length === 0)) {
+    area.innerHTML = '<div class="links-empty">No links</div>';
+    return;
+  }
+  let html = '';
+  if (links.outgoing.length > 0) {
+    html += '<div class="link-group-label">Outgoing</div>';
+    links.outgoing.forEach(l => {
+      const target = S.memoMap[l.target_id];
+      const title = target ? target.title : 'Memo #' + l.target_id;
+      const w = l.weight ? l.weight.toFixed(1) : '';
+      html += `<div class="link-item" data-link-nav="${esc(l.target_id)}" role="button" tabindex="0">
+        <span class="link-type ${esc(l.relation_type)}">${esc(l.relation_type)}</span>
+        <span class="link-title">${esc(trunc(title, 30))}</span>
+        ${w ? '<span class="link-weight">' + esc(w) + '</span>' : ''}
+        <span class="link-delete" data-link-del-source="${esc(l.source_id)}" data-link-del-target="${esc(l.target_id)}" data-link-del-type="${esc(l.relation_type)}" title="Remove link" role="button" tabindex="0" aria-label="Remove link">${ICO.x}</span>
+      </div>`;
+    });
+  }
+  if (links.incoming.length > 0) {
+    html += '<div class="link-group-label">Incoming</div>';
+    links.incoming.forEach(l => {
+      const source = S.memoMap[l.source_id];
+      const title = source ? source.title : 'Memo #' + l.source_id;
+      const w = l.weight ? l.weight.toFixed(1) : '';
+      html += `<div class="link-item" data-link-nav="${esc(l.source_id)}" role="button" tabindex="0">
+        <span class="link-type ${esc(l.relation_type)}">${esc(l.relation_type)}</span>
+        <span class="link-title">${esc(trunc(title, 30))}</span>
+        ${w ? '<span class="link-weight">' + esc(w) + '</span>' : ''}
+        <span class="link-delete" data-link-del-source="${esc(l.source_id)}" data-link-del-target="${esc(l.target_id)}" data-link-del-type="${esc(l.relation_type)}" title="Remove link" role="button" tabindex="0" aria-label="Remove link">${ICO.x}</span>
+      </div>`;
+    });
+  }
+  area.innerHTML = html;
 }
 
 async function deleteLink(source, target, type) {
   if (!confirm(`Remove ${type} link?`)) return;
   const result = await api.del('/api/link', { source: Number(source), target: Number(target), type });
   if (result.error) { showToast(result.error, 'error'); return; }
+  /* Re-fetch the memo to update links in state */
+  if (S.selected) {
+    const memo = await api.get(`/api/memo?id=${encodeURIComponent(S.selected.id)}`);
+    if (!memo.error) {
+      S.selected = memo; S.memoMap[memo.id] = memo;
+      renderLinks();
+      updateGraph(memo.id);
+    }
+  }
   showToast('Link removed', 'success');
 }
 
@@ -259,6 +300,22 @@ function setupEvents() {
     }
     const rm = e.target.closest('[data-tag-remove]');
     if (rm && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); removeTag(rm.dataset.tagRemove); }
+  });
+
+  // Links delegation (click to navigate, delete button)
+  document.getElementById('linksArea').addEventListener('click', e => {
+    const del = e.target.closest('[data-link-del-source]');
+    if (del) { e.stopPropagation(); deleteLink(del.dataset.linkDelSource, del.dataset.linkDelTarget, del.dataset.linkDelType); return; }
+    const nav = e.target.closest('[data-link-nav]');
+    if (nav) selectMemo(Number(nav.dataset.linkNav));
+  });
+  document.getElementById('linksArea').addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const del = e.target.closest('[data-link-del-source]');
+      if (del) { e.preventDefault(); e.stopPropagation(); deleteLink(del.dataset.linkDelSource, del.dataset.linkDelTarget, del.dataset.linkDelType); return; }
+      const nav = e.target.closest('[data-link-nav]');
+      if (nav) { e.preventDefault(); selectMemo(Number(nav.dataset.linkNav)); }
+    }
   });
 
   // Search with debounce - uses server-side FTS5 search when query is present
@@ -336,22 +393,68 @@ function cacheLayout() {
 }
 
 function updateGraph(centerId) {
-  /* Since links are not embedded in memo objects, the graph just shows the selected memo as a single node.
-     A future enhancement could fetch links from a dedicated endpoint to build the neighborhood. */
   document.getElementById('graphEmpty').style.display = 'none';
   const W = canvas.clientWidth, H = canvas.clientHeight;
   gNodes=[]; gNodeIdx={}; gEdges=[];
 
   const memo = S.memoMap[centerId];
   if (!memo) { clearGraph(); return; }
-  const abs = memo.layer==='abstract';
-  gNodeIdx[centerId] = 0;
-  gNodes.push({ id: centerId, x: W/2, y: H/2, vx:0, vy:0, r: 14,
-    color: abs?'#A78BFA':'#3B82F6', shape: abs?'diamond':'circle',
-    label: trunc(memo.title,18), fullTitle: memo.title, isCenter: true });
 
-  gCam = {x:0,y:0,zoom:1}; gPhysics = false;
-  gDraw();
+  /* Helper to add a node if not already present */
+  function addNode(id, isCenter) {
+    if (gNodeIdx[id] !== undefined) return;
+    const m = S.memoMap[id];
+    if (!m) return;
+    const abs = m.layer === 'abstract';
+    const cached = layoutCache[centerId];
+    let x, y;
+    if (cached) {
+      const pos = cached.find(p => p.id === id);
+      if (pos) { x = pos.x; y = pos.y; }
+    }
+    if (x === undefined) {
+      if (isCenter) { x = W/2; y = H/2; }
+      else {
+        const angle = (gNodes.length / 8) * Math.PI * 2;
+        x = W/2 + Math.cos(angle) * 80;
+        y = H/2 + Math.sin(angle) * 80;
+      }
+    }
+    gNodeIdx[id] = gNodes.length;
+    gNodes.push({ id, x, y, vx:0, vy:0, r: isCenter ? 14 : 10,
+      color: abs ? '#A78BFA' : '#3B82F6', shape: abs ? 'diamond' : 'circle',
+      label: trunc(m.title, 18), fullTitle: m.title, isCenter: !!isCenter });
+  }
+
+  /* Add center node */
+  addNode(centerId, true);
+
+  /* Add neighbors from link data */
+  const links = memo.links;
+  if (links) {
+    (links.outgoing || []).forEach(l => {
+      addNode(l.target_id, false);
+      if (gNodeIdx[l.target_id] !== undefined) {
+        const color = EDGE_COLORS[l.relation_type] || EDGE_COLORS.related;
+        gEdges.push({ from: centerId, to: l.target_id, color, width: Math.max(1, (l.weight || 1) * 1.5), label: l.relation_type });
+      }
+    });
+    (links.incoming || []).forEach(l => {
+      addNode(l.source_id, false);
+      if (gNodeIdx[l.source_id] !== undefined) {
+        const color = EDGE_COLORS[l.relation_type] || EDGE_COLORS.related;
+        gEdges.push({ from: l.source_id, to: centerId, color, width: Math.max(1, (l.weight || 1) * 1.5), label: l.relation_type });
+      }
+    });
+  }
+
+  gCam = {x:0, y:0, zoom:1};
+  if (gNodes.length > 1) {
+    restartAnimation();
+  } else {
+    gPhysics = false;
+    gDraw();
+  }
 }
 
 function clearGraph() {
