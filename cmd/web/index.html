@@ -155,7 +155,7 @@ body { font-family: var(--font-body); background: var(--bg-primary); color: var(
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
         zk <span>Knowledge Graph</span>
       </div>
-      <input class="search-input" id="searchInput" type="text" placeholder="Search notes..." aria-label="Search notes" />
+      <input class="search-input" id="searchInput" type="text" placeholder="Search memos..." aria-label="Search memos" />
       <div class="filter-bar" id="filterBar"></div>
     </div>
     <div class="sidebar-tree" id="sidebarTree"></div>
@@ -163,26 +163,26 @@ body { font-family: var(--font-body); background: var(--bg-primary); color: var(
   </div>
 
   <div class="editor">
-    <div class="editor-empty" id="editorEmpty">Select a note to view and edit</div>
+    <div class="editor-empty" id="editorEmpty">Select a memo to view and edit</div>
     <div class="editor-content" id="editorContent">
       <div class="editor-topbar">
         <span class="editor-id" id="editorId"></span>
         <span class="layer-badge" id="editorLayer"></span>
         <span class="editor-project" id="editorProject"></span>
       </div>
-      <input class="title-input" id="titleInput" type="text" aria-label="Note title" />
+      <input class="title-input" id="titleInput" type="text" aria-label="Memo title" />
       <div class="save-bar" id="saveBar">
         <span class="save-text">Unsaved changes</span>
         <button class="save-btn" id="saveBtn" aria-label="Save changes">Save (Ctrl+S)</button>
       </div>
-      <textarea class="content-textarea" id="contentArea" aria-label="Note content"></textarea>
+      <textarea class="content-textarea" id="contentArea" aria-label="Memo content"></textarea>
       <div class="section-label">Tags</div>
       <div class="tags-area" id="tagsArea"></div>
       <div class="section-label">Links</div>
       <div id="linksArea"></div>
       <div class="section-label">Metadata</div>
       <div class="meta-grid" id="metaGrid"></div>
-      <button class="note-delete-btn" id="deleteBtn" aria-label="Delete this note">Delete Note</button>
+      <button class="note-delete-btn" id="deleteBtn" aria-label="Delete this memo">Delete Memo</button>
     </div>
   </div>
 
@@ -190,7 +190,7 @@ body { font-family: var(--font-body); background: var(--bg-primary); color: var(
     <div class="graph-header">Neighborhood Graph</div>
     <div class="graph-canvas-wrap">
       <canvas id="graphCanvas"></canvas>
-      <div class="graph-empty" id="graphEmpty">Select a note to see its connections</div>
+      <div class="graph-empty" id="graphEmpty">Select a memo to see its connections</div>
     </div>
     <div class="graph-legend">
       <div class="leg"><i style="background:var(--blue)"></i>concrete</div>
@@ -208,7 +208,8 @@ body { font-family: var(--font-body); background: var(--bg-primary); color: var(
 
 <script>
 /* ═══ STATE ═══ */
-const S = { projects:[], allNotes:[], noteMap:{}, selected:null, dirty:false, filter:'all', searchQuery:'', collapsed:{} };
+/* notes = containers (formerly projects), allMemos = individual documents (formerly notes) */
+const S = { notes:[], allMemos:[], memoMap:{}, selected:null, dirty:false, filter:'all', searchQuery:'', collapsed:{} };
 
 /* ═══ SVG ICONS ═══ */
 const ICO = {
@@ -229,10 +230,10 @@ const api = {
 async function init() {
   const data = await api.get('/api/all-data');
   if (data.error) return;
-  S.projects = data.projects || [];
-  S.allNotes = data.notes || [];
-  S.noteMap = {};
-  S.allNotes.forEach(n => S.noteMap[n.id] = n);
+  S.notes = data.notes || [];
+  S.allMemos = data.memos || [];
+  S.memoMap = {};
+  S.allMemos.forEach(m => S.memoMap[m.id] = m);
   initFilterBar();
   renderSidebar();
   updateFooter();
@@ -244,7 +245,7 @@ async function init() {
 function initFilterBar() {
   const bar = document.getElementById('filterBar');
   bar.innerHTML = ['all','concrete','abstract'].map(f =>
-    `<button class="filter-btn ${f==='all'?'active':''}" data-filter="${f}" aria-label="Show ${f} notes">${f.charAt(0).toUpperCase()+f.slice(1)}</button>`
+    `<button class="filter-btn ${f==='all'?'active':''}" data-filter="${f}" aria-label="Show ${f} memos">${f.charAt(0).toUpperCase()+f.slice(1)}</button>`
   ).join('');
   bar.addEventListener('click', e => {
     const btn = e.target.closest('[data-filter]');
@@ -257,103 +258,103 @@ function initFilterBar() {
 }
 
 /* ═══ SIDEBAR (event delegation, data-* attrs, no inline handlers) ═══ */
-function getFilteredNotes() {
-  let notes = S.allNotes;
-  if (S.filter === 'concrete') notes = notes.filter(n => n.layer !== 'abstract');
-  if (S.filter === 'abstract') notes = notes.filter(n => n.layer === 'abstract');
+function getFilteredMemos() {
+  let memos = S.allMemos;
+  if (S.filter === 'concrete') memos = memos.filter(m => m.layer !== 'abstract');
+  if (S.filter === 'abstract') memos = memos.filter(m => m.layer === 'abstract');
   if (S.searchQuery) {
     const q = S.searchQuery.toLowerCase();
-    notes = notes.filter(n => n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || (n.tags||[]).some(t => t.toLowerCase().includes(q)));
+    memos = memos.filter(m => m.title.toLowerCase().includes(q) || (m.content||'').toLowerCase().includes(q) || (m.tags||[]).some(t => t.toLowerCase().includes(q)));
   }
-  return notes;
+  return memos;
 }
 
 function renderSidebar() {
-  const notes = getFilteredNotes();
+  const memos = getFilteredMemos();
   const tree = document.getElementById('sidebarTree');
-  const groups = {}; const projMap = {};
-  S.projects.forEach(p => { projMap[p.id] = p; groups[p.id] = []; });
-  groups['__global'] = [];
-  notes.forEach(n => { const pid = n.project_id || '__global'; if (!groups[pid]) groups[pid] = []; groups[pid].push(n); });
+  /* Group memos by note_id. 0 or missing = Global, others = note containers */
+  const groups = {}; const noteMap = {};
+  S.notes.forEach(n => { noteMap[n.id] = n; groups[n.id] = []; });
+  groups[0] = [];
+  memos.forEach(m => { const nid = m.note_id || 0; if (!groups[nid]) groups[nid] = []; groups[nid].push(m); });
 
   let html = '';
-  for (const [pid, pnotes] of Object.entries(groups)) {
-    if (pnotes.length === 0 && pid !== '__global') continue;
-    const proj = projMap[pid]; const name = proj ? proj.name : 'Global';
-    const collapsed = S.collapsed[pid] || false;
+  for (const [nid, noteMemos] of Object.entries(groups)) {
+    if (noteMemos.length === 0 && String(nid) !== '0') continue;
+    const note = noteMap[nid]; const name = note ? note.name : 'Global';
+    const collapsed = S.collapsed[nid] || false;
     html += `<div class="project-section">
-      <div class="project-header ${collapsed?'collapsed':''}" data-project-id="${esc(pid)}" tabindex="0" role="button" aria-expanded="${!collapsed}">
-        ${ICO.chevron}<span class="p-name">${esc(name)}</span><span class="p-count">${pnotes.length}</span>
+      <div class="project-header ${collapsed?'collapsed':''}" data-project-id="${esc(nid)}" tabindex="0" role="button" aria-expanded="${!collapsed}">
+        ${ICO.chevron}<span class="p-name">${esc(name)}</span><span class="p-count">${noteMemos.length}</span>
       </div><div class="project-notes ${collapsed?'hidden':''}">`;
-    pnotes.forEach(n => {
-      const layer = n.layer === 'abstract' ? 'abstract' : 'concrete';
-      const active = S.selected && S.selected.id === n.id ? 'active' : '';
-      html += `<div class="note-item ${active}" data-note-id="${esc(n.id)}" data-note-project="${esc(n.project_id||'')}" tabindex="0" role="button">
-        <div class="note-dot ${layer}"></div><span class="n-title">${esc(trunc(n.title,35))}</span></div>`;
+    noteMemos.forEach(m => {
+      const layer = m.layer === 'abstract' ? 'abstract' : 'concrete';
+      const active = S.selected && S.selected.id === m.id ? 'active' : '';
+      html += `<div class="note-item ${active}" data-memo-id="${esc(m.id)}" tabindex="0" role="button">
+        <div class="note-dot ${layer}"></div><span class="n-title">${esc(trunc(m.title,35))}</span></div>`;
     });
     html += '</div></div>';
   }
-  tree.innerHTML = html || '<div style="padding:20px;color:var(--text-muted);font-size:12px;text-align:center">No notes found</div>';
+  tree.innerHTML = html || '<div style="padding:20px;color:var(--text-muted);font-size:12px;text-align:center">No memos found</div>';
 }
 
 function updateFooter() {
-  const c = S.allNotes.filter(n => n.layer !== 'abstract').length;
-  const a = S.allNotes.length - c;
-  const l = S.allNotes.reduce((s,n) => s + (n.links||[]).length, 0);
-  document.getElementById('sidebarFooter').textContent = `${S.allNotes.length} notes (${c}C/${a}A) \u00b7 ${l} links \u00b7 ${S.projects.length} projects`;
+  const c = S.allMemos.filter(m => m.layer !== 'abstract').length;
+  const a = S.allMemos.length - c;
+  document.getElementById('sidebarFooter').textContent = `${S.allMemos.length} memos (${c}C/${a}A) \u00b7 ${S.notes.length} notes`;
 }
 
 /* ═══ EDITOR ═══ */
-async function selectNote(id, projectId) {
+async function selectMemo(id) {
   if (S.dirty && !confirm('Discard unsaved changes?')) return;
   S.dirty = false;
   cacheLayout();
-  const note = await api.get(`/api/note?id=${encodeURIComponent(id)}&project=${encodeURIComponent(projectId)}`);
-  if (note.error) { showToast(note.error, 'error'); return; }
-  S.selected = note;
-  S.noteMap[note.id] = note;
+  const memo = await api.get(`/api/memo?id=${encodeURIComponent(id)}`);
+  if (memo.error) { showToast(memo.error, 'error'); return; }
+  S.selected = memo;
+  S.memoMap[memo.id] = memo;
   document.getElementById('editorEmpty').style.display = 'none';
   document.getElementById('editorContent').classList.add('visible');
-  document.getElementById('editorId').textContent = note.id;
+  document.getElementById('editorId').textContent = memo.id;
   const layerEl = document.getElementById('editorLayer');
-  layerEl.textContent = note.layer;
-  layerEl.className = 'layer-badge ' + note.layer;
-  const proj = S.projects.find(p => p.id === note.project_id);
-  document.getElementById('editorProject').textContent = proj ? proj.name : 'Global';
-  document.getElementById('titleInput').value = note.title;
-  document.getElementById('contentArea').value = note.content;
+  layerEl.textContent = memo.layer;
+  layerEl.className = 'layer-badge ' + memo.layer;
+  const note = S.notes.find(n => n.id === memo.note_id);
+  document.getElementById('editorProject').textContent = note ? note.name : 'Global';
+  document.getElementById('titleInput').value = memo.title;
+  document.getElementById('contentArea').value = memo.content;
   document.getElementById('saveBar').classList.remove('visible');
-  renderTags(note);
-  renderLinks(note);
-  renderMeta(note);
-  document.querySelectorAll('.note-item').forEach(el => el.classList.toggle('active', el.dataset.noteId === id));
-  updateGraph(note.id);
+  renderTags(memo);
+  renderLinks();
+  renderMeta(memo);
+  document.querySelectorAll('.note-item').forEach(el => el.classList.toggle('active', el.dataset.memoId == id));
+  updateGraph(memo.id);
 }
 
 function markDirty() {
   if (!S.dirty) { S.dirty = true; document.getElementById('saveBar').classList.add('visible'); }
 }
 
-async function saveNote() {
+async function saveMemo() {
   if (!S.selected) return;
-  const result = await api.put(`/api/note?id=${encodeURIComponent(S.selected.id)}&project=${encodeURIComponent(S.selected.project_id)}`, {
+  const result = await api.put(`/api/memo?id=${encodeURIComponent(S.selected.id)}`, {
     title: document.getElementById('titleInput').value,
     content: document.getElementById('contentArea').value,
   });
   if (result.error) { showToast(result.error, 'error'); return; }
-  S.selected = result; S.noteMap[result.id] = result;
-  const idx = S.allNotes.findIndex(n => n.id === result.id);
-  if (idx >= 0) S.allNotes[idx] = result;
+  S.selected = result; S.memoMap[result.id] = result;
+  const idx = S.allMemos.findIndex(m => m.id === result.id);
+  if (idx >= 0) S.allMemos[idx] = result;
   renderSidebar();
   S.dirty = false;
   document.getElementById('saveBar').classList.remove('visible');
   showToast('Saved', 'success');
 }
 
-function renderTags(note) {
+function renderTags(memo) {
   const area = document.getElementById('tagsArea');
   let html = '';
-  (note.tags || []).forEach(t => {
+  (memo.tags || []).forEach(t => {
     html += `<span class="tag-chip">${esc(t)}<span class="tag-remove" data-tag-remove="${esc(t)}" title="Remove tag" role="button" tabindex="0" aria-label="Remove tag ${esc(t)}">${ICO.x}</span></span>`;
   });
   html += `<input class="tag-input" id="tagInput" type="text" placeholder="add tag..." aria-label="Add new tag" />`;
@@ -362,105 +363,71 @@ function renderTags(note) {
 
 async function addTag(tag) {
   if (!S.selected) return;
-  const result = await api.post('/api/tag', { note_id: S.selected.id, project_id: S.selected.project_id, tag, action:'add' });
+  const result = await api.post('/api/tag', { memo_id: S.selected.id, tag, action:'add' });
   if (result.error) { showToast(result.error,'error'); return; }
-  S.selected = result; S.noteMap[result.id] = result;
-  const idx = S.allNotes.findIndex(n => n.id === result.id);
-  if (idx >= 0) S.allNotes[idx] = result;
+  S.selected = result; S.memoMap[result.id] = result;
+  const idx = S.allMemos.findIndex(m => m.id === result.id);
+  if (idx >= 0) S.allMemos[idx] = result;
   renderTags(result);
   showToast(`Tag "${tag}" added`, 'success');
 }
 
 async function removeTag(tag) {
   if (!S.selected) return;
-  const result = await api.post('/api/tag', { note_id: S.selected.id, project_id: S.selected.project_id, tag, action:'remove' });
+  const result = await api.post('/api/tag', { memo_id: S.selected.id, tag, action:'remove' });
   if (result.error) { showToast(result.error,'error'); return; }
-  S.selected = result; S.noteMap[result.id] = result;
-  const idx = S.allNotes.findIndex(n => n.id === result.id);
-  if (idx >= 0) S.allNotes[idx] = result;
+  S.selected = result; S.memoMap[result.id] = result;
+  const idx = S.allMemos.findIndex(m => m.id === result.id);
+  if (idx >= 0) S.allMemos[idx] = result;
   renderTags(result);
   showToast(`Tag "${tag}" removed`, 'success');
 }
 
-function renderLinks(note) {
+function renderLinks() {
+  /* Links are NOT embedded in memo objects in the new API.
+     Show a placeholder message. Links are stored in a separate table. */
   const area = document.getElementById('linksArea');
-  const out = note.links || [];
-  const inc = [];
-  S.allNotes.forEach(n => { (n.links||[]).forEach(l => { if (l.target_id === note.id && n.id !== note.id) inc.push({...l, source_id:n.id, source_project:n.project_id}); }); });
-  let html = '';
-  if (out.length) {
-    html += '<div class="link-group-label">Outgoing &rarr;</div>';
-    out.forEach(l => {
-      const t = S.noteMap[l.target_id]; const title = t ? t.title : l.target_id;
-      const cross = t && t.project_id !== note.project_id;
-      const tp = t ? t.project_id : note.project_id;
-      html += `<div class="link-item" data-link-note="${esc(l.target_id)}" data-link-project="${esc(tp)}">
-        <span class="link-type ${l.relation_type}">${esc(l.relation_type)}</span>
-        <span class="link-title">${esc(trunc(title,30))}</span>
-        ${cross ? '<span class="link-cross">cross</span>' : ''}
-        <span class="link-weight">${l.weight||''}</span>
-        <span class="link-delete" data-del-source="${esc(note.id)}" data-del-target="${esc(l.target_id)}" data-del-type="${esc(l.relation_type)}" data-del-project="${esc(note.project_id)}" data-del-target-project="${esc(tp)}" title="Remove link" role="button" tabindex="0" aria-label="Remove link">${ICO.trash}</span>
-      </div>`;
-    });
-  }
-  if (inc.length) {
-    html += '<div class="link-group-label">&larr; Incoming</div>';
-    inc.forEach(l => {
-      const s = S.noteMap[l.source_id]; const title = s ? s.title : l.source_id;
-      const cross = l.source_project !== note.project_id;
-      html += `<div class="link-item" data-link-note="${esc(l.source_id)}" data-link-project="${esc(l.source_project||note.project_id)}">
-        <span class="link-type ${l.relation_type}">${esc(l.relation_type)}</span>
-        <span class="link-title">${esc(trunc(title,30))}</span>
-        ${cross ? '<span class="link-cross">cross</span>' : ''}
-        <span class="link-weight">${l.weight||''}</span>
-        <span class="link-delete" data-del-source="${esc(l.source_id)}" data-del-target="${esc(note.id)}" data-del-type="${esc(l.relation_type)}" data-del-project="${esc(l.source_project||note.project_id)}" data-del-target-project="${esc(note.project_id)}" title="Remove link" role="button" tabindex="0" aria-label="Remove link">${ICO.trash}</span>
-      </div>`;
-    });
-  }
-  if (!out.length && !inc.length) html = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No links</div>';
-  area.innerHTML = html;
+  area.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">Links are managed separately</div>';
 }
 
-async function deleteLink(source, target, type, project, targetProject) {
+async function deleteLink(source, target, type) {
   if (!confirm(`Remove ${type} link?`)) return;
-  const result = await api.del('/api/link', { source, target, type, project, target_project: targetProject });
+  const result = await api.del('/api/link', { source: Number(source), target: Number(target), type });
   if (result.error) { showToast(result.error, 'error'); return; }
-  await refreshData();
-  if (S.selected) { const fresh = S.noteMap[S.selected.id]; if (fresh) { S.selected = fresh; renderLinks(fresh); updateGraph(fresh.id); } }
   showToast('Link removed', 'success');
 }
 
-function renderMeta(note) {
-  const cr = note.metadata?.created_at ? new Date(note.metadata.created_at).toLocaleString() : '\u2014';
-  const up = note.metadata?.updated_at ? new Date(note.metadata.updated_at).toLocaleString() : '\u2014';
-  const author = note.metadata?.author || '\u2014';
+function renderMeta(memo) {
+  const cr = memo.metadata?.created_at ? new Date(memo.metadata.created_at).toLocaleString() : '\u2014';
+  const up = memo.metadata?.updated_at ? new Date(memo.metadata.updated_at).toLocaleString() : '\u2014';
+  const author = memo.metadata?.author || '\u2014';
   document.getElementById('metaGrid').innerHTML = `
     <span class="meta-label">Created</span><span class="meta-value">${esc(cr)}</span>
     <span class="meta-label">Updated</span><span class="meta-value">${esc(up)}</span>
     <span class="meta-label">Author</span><span class="meta-value">${esc(author)}</span>`;
 }
 
-async function deleteCurrentNote() {
+async function deleteCurrentMemo() {
   if (!S.selected) return;
-  if (!confirm(`Delete "${S.selected.title}"? This moves it to trash.`)) return;
+  if (!confirm(`Delete "${S.selected.title}"?`)) return;
   try {
-    const result = await api.del(`/api/note?id=${encodeURIComponent(S.selected.id)}&project=${encodeURIComponent(S.selected.project_id)}`);
+    const result = await api.del(`/api/memo?id=${encodeURIComponent(S.selected.id)}`);
     if (result.error) { showToast(result.error, 'error'); return; }
   } catch (err) { showToast('Failed to delete: ' + err.message, 'error'); return; }
-  S.allNotes = S.allNotes.filter(n => n.id !== S.selected.id);
-  delete S.noteMap[S.selected.id];
+  S.allMemos = S.allMemos.filter(m => m.id !== S.selected.id);
+  delete S.memoMap[S.selected.id];
   S.selected = null; S.dirty = false;
   document.getElementById('editorEmpty').style.display = '';
   document.getElementById('editorContent').classList.remove('visible');
   renderSidebar(); updateFooter(); clearGraph();
-  showToast('Note deleted', 'success');
+  showToast('Memo deleted', 'success');
 }
 
 async function refreshData() {
   const data = await api.get('/api/all-data');
   if (data.error) return;
-  S.projects = data.projects || []; S.allNotes = data.notes || [];
-  S.noteMap = {}; S.allNotes.forEach(n => S.noteMap[n.id] = n);
+  S.notes = data.notes || []; S.allMemos = data.memos || [];
+  S.memoMap = {}; S.allMemos.forEach(m => S.memoMap[m.id] = m);
   renderSidebar(); updateFooter();
 }
 
@@ -469,18 +436,16 @@ function setupEvents() {
   const tree = document.getElementById('sidebarTree');
   // Sidebar click delegation
   tree.addEventListener('click', e => {
-    const del = e.target.closest('[data-del-source]');
-    if (del) { e.stopPropagation(); deleteLink(del.dataset.delSource, del.dataset.delTarget, del.dataset.delType, del.dataset.delProject, del.dataset.delTargetProject); return; }
-    const noteEl = e.target.closest('[data-note-id]');
-    if (noteEl) { selectNote(noteEl.dataset.noteId, noteEl.dataset.noteProject); return; }
+    const memoEl = e.target.closest('[data-memo-id]');
+    if (memoEl) { selectMemo(Number(memoEl.dataset.memoId)); return; }
     const projEl = e.target.closest('[data-project-id]');
     if (projEl) { S.collapsed[projEl.dataset.projectId] = !S.collapsed[projEl.dataset.projectId]; renderSidebar(); return; }
   });
   // Keyboard on sidebar items
   tree.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') {
-      const noteEl = e.target.closest('[data-note-id]');
-      if (noteEl) { e.preventDefault(); selectNote(noteEl.dataset.noteId, noteEl.dataset.noteProject); return; }
+      const memoEl = e.target.closest('[data-memo-id]');
+      if (memoEl) { e.preventDefault(); selectMemo(Number(memoEl.dataset.memoId)); return; }
       const projEl = e.target.closest('[data-project-id]');
       if (projEl) { e.preventDefault(); S.collapsed[projEl.dataset.projectId] = !S.collapsed[projEl.dataset.projectId]; renderSidebar(); }
     }
@@ -489,8 +454,8 @@ function setupEvents() {
   // Editor events
   document.getElementById('titleInput').addEventListener('input', markDirty);
   document.getElementById('contentArea').addEventListener('input', markDirty);
-  document.getElementById('saveBtn').addEventListener('click', saveNote);
-  document.getElementById('deleteBtn').addEventListener('click', deleteCurrentNote);
+  document.getElementById('saveBtn').addEventListener('click', saveMemo);
+  document.getElementById('deleteBtn').addEventListener('click', deleteCurrentMemo);
 
   // Tags delegation
   document.getElementById('tagsArea').addEventListener('click', e => {
@@ -505,25 +470,30 @@ function setupEvents() {
     if (rm && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); removeTag(rm.dataset.tagRemove); }
   });
 
-  // Links delegation
-  document.getElementById('linksArea').addEventListener('click', e => {
-    const del = e.target.closest('[data-del-source]');
-    if (del) { e.stopPropagation(); deleteLink(del.dataset.delSource, del.dataset.delTarget, del.dataset.delType, del.dataset.delProject, del.dataset.delTargetProject); return; }
-    const linkEl = e.target.closest('[data-link-note]');
-    if (linkEl) selectNote(linkEl.dataset.linkNote, linkEl.dataset.linkProject);
-  });
-
-  // Search with debounce
+  // Search with debounce - uses server-side FTS5 search when query is present
   let searchTimer = null;
   document.getElementById('searchInput').addEventListener('input', e => {
     if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { S.searchQuery = e.target.value; renderSidebar(); }, 200);
+    searchTimer = setTimeout(async () => {
+      S.searchQuery = e.target.value;
+      if (S.searchQuery.trim()) {
+        const results = await api.get(`/api/search?q=${encodeURIComponent(S.searchQuery)}`);
+        if (!results.error && Array.isArray(results)) {
+          S.allMemos = results;
+          S.memoMap = {};
+          S.allMemos.forEach(m => S.memoMap[m.id] = m);
+        }
+      } else {
+        await refreshData();
+      }
+      renderSidebar();
+    }, 300);
   });
 
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (S.dirty) saveNote(); }
-    if (e.key === 'Escape') { document.getElementById('searchInput').value = ''; S.searchQuery = ''; renderSidebar(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (S.dirty) saveMemo(); }
+    if (e.key === 'Escape') { document.getElementById('searchInput').value = ''; S.searchQuery = ''; refreshData(); }
   });
 
   // Beforeunload guard
@@ -565,7 +535,7 @@ function resizeCanvas() {
   canvas.width = r.width * devicePixelRatio; canvas.height = r.height * devicePixelRatio;
   canvas.style.width = r.width+'px'; canvas.style.height = r.height+'px';
   ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-  if (gNodes.length) gDraw(); // redraw on resize even if physics stopped
+  if (gNodes.length) gDraw();
 }
 
 function cacheLayout() {
@@ -575,46 +545,22 @@ function cacheLayout() {
 }
 
 function updateGraph(centerId) {
+  /* Since links are not embedded in memo objects, the graph just shows the selected memo as a single node.
+     A future enhancement could fetch links from a dedicated endpoint to build the neighborhood. */
   document.getElementById('graphEmpty').style.display = 'none';
-  const visited = new Set([centerId]); let frontier = [centerId];
-  for (let d = 0; d < 2; d++) {
-    const next = [];
-    frontier.forEach(id => {
-      const n = S.noteMap[id]; if (!n) return;
-      (n.links||[]).forEach(l => { if (!visited.has(l.target_id) && S.noteMap[l.target_id]) { visited.add(l.target_id); next.push(l.target_id); } });
-      S.allNotes.forEach(other => { (other.links||[]).forEach(l => { if (l.target_id===id && !visited.has(other.id)) { visited.add(other.id); next.push(other.id); } }); });
-    });
-    frontier = next;
-  }
-
   const W = canvas.clientWidth, H = canvas.clientHeight;
   gNodes=[]; gNodeIdx={}; gEdges=[];
-  const cached = layoutCache[centerId];
-  const cachedMap = {};
-  if (cached) cached.forEach(c => cachedMap[c.id] = c);
 
-  visited.forEach(id => {
-    const n = S.noteMap[id]; if (!n) return;
-    const abs = n.layer==='abstract', isCenter = id===centerId;
-    const ang = Math.random()*Math.PI*2, dist = isCenter ? 0 : 40+Math.random()*80;
-    let x = W/2+Math.cos(ang)*dist, y = H/2+Math.sin(ang)*dist;
-    if (cachedMap[id]) { x = cachedMap[id].x; y = cachedMap[id].y; }
-    gNodeIdx[id] = gNodes.length;
-    gNodes.push({ id, x, y, vx:0, vy:0, r: isCenter?14:8+Math.min((n.links||[]).length,6),
-      color: abs?'#A78BFA':'#3B82F6', shape: abs?'diamond':'circle',
-      label: trunc(n.title,18), fullTitle: n.title, isCenter });
-  });
+  const memo = S.memoMap[centerId];
+  if (!memo) { clearGraph(); return; }
+  const abs = memo.layer==='abstract';
+  gNodeIdx[centerId] = 0;
+  gNodes.push({ id: centerId, x: W/2, y: H/2, vx:0, vy:0, r: 14,
+    color: abs?'#A78BFA':'#3B82F6', shape: abs?'diamond':'circle',
+    label: trunc(memo.title,18), fullTitle: memo.title, isCenter: true });
 
-  const edgeSet = new Set();
-  visited.forEach(id => { const n = S.noteMap[id]; if (!n) return;
-    (n.links||[]).forEach(l => { if (gNodeIdx[l.target_id]===undefined) return;
-      const key = id+'>'+l.target_id; if (edgeSet.has(key)) return; edgeSet.add(key);
-      gEdges.push({ from:id, to:l.target_id, color:EDGE_COLORS[l.relation_type]||'#64748B', width:Math.max(1,(l.weight||.5)*2) });
-    });
-  });
-
-  gCam = {x:0,y:0,zoom:1}; gPhysics = true;
-  restartAnimation();
+  gCam = {x:0,y:0,zoom:1}; gPhysics = false;
+  gDraw();
 }
 
 function clearGraph() {
@@ -705,7 +651,7 @@ function gMove(e) {
 }
 function gUp(e) {
   if (gDragging) { const r=canvas.getBoundingClientRect(), hit=gHitTest(e.clientX-r.left,e.clientY-r.top);
-    if (hit&&hit===gDragging) { const n=S.noteMap[hit.id]; if(n) selectNote(n.id,n.project_id); }
+    if (hit&&hit===gDragging) { const m=S.memoMap[hit.id]; if(m) selectMemo(m.id); }
     gDragging=null;
   }
   gPanning=false; canvas.style.cursor='default';
