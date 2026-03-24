@@ -23,6 +23,26 @@ type apiMemoView struct {
 	Tags     []string       `json:"tags"`
 	NoteID   int64          `json:"note_id"`
 	Metadata model.Metadata `json:"metadata"`
+	Links    *apiMemoLinks  `json:"links,omitempty"`
+}
+
+type apiMemoLinks struct {
+	Outgoing []model.Link `json:"outgoing"`
+	Incoming []model.Link `json:"incoming"`
+}
+
+func (h *serveHandler) attachLinks(view *apiMemoView) {
+	outgoing, incoming, err := h.store.ListLinks(view.ID)
+	if err != nil {
+		return
+	}
+	if outgoing == nil {
+		outgoing = []model.Link{}
+	}
+	if incoming == nil {
+		incoming = []model.Link{}
+	}
+	view.Links = &apiMemoLinks{Outgoing: outgoing, Incoming: incoming}
 }
 
 func toAPIMemoView(m *model.Memo) apiMemoView {
@@ -131,13 +151,18 @@ func (h *serveHandler) handleMemo(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "memo not found", 404)
 			return
 		}
-		jsonResponse(w, toAPIMemoView(memo))
+		view := toAPIMemoView(memo)
+		h.attachLinks(&view)
+		jsonResponse(w, view)
 
 	case "PUT":
 		var body struct {
 			Title   *string  `json:"title"`
 			Content *string  `json:"content"`
 			Tags    []string `json:"tags"`
+			Summary *string  `json:"summary"`
+			Status  *string  `json:"status"`
+			Source  *string  `json:"source"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			jsonError(w, "invalid JSON body", 400)
@@ -158,12 +183,23 @@ func (h *serveHandler) handleMemo(w http.ResponseWriter, r *http.Request) {
 		if body.Tags != nil {
 			memo.Tags = body.Tags
 		}
+		if body.Summary != nil {
+			memo.Metadata.Summary = *body.Summary
+		}
+		if body.Status != nil {
+			memo.Metadata.Status = *body.Status
+		}
+		if body.Source != nil {
+			memo.Metadata.Source = *body.Source
+		}
 		if err := h.store.UpdateMemo(memo); err != nil {
 			debugf("update memo %d: %v", memoID, err)
 			jsonError(w, "failed to save memo", 500)
 			return
 		}
-		jsonResponse(w, toAPIMemoView(memo))
+		view := toAPIMemoView(memo)
+		h.attachLinks(&view)
+		jsonResponse(w, view)
 
 	case "DELETE":
 		if err := h.store.DeleteMemo(memoID); err != nil {
