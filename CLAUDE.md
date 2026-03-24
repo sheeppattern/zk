@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Git Workflow
+
+**모든 작업은 반드시 feature 브랜치에서 수행한다. main에 직접 커밋/푸시 금지.**
+
+```bash
+# 1. 브랜치 생성
+git checkout -b feature/<작업명>
+
+# 2. 작업 + 커밋 (체크포인트마다)
+git add <files>
+git commit -m "feat/fix/refactor: ..."
+
+# 3. PR 생성 → 리뷰 → 머지
+gh pr create --title "..." --body "..."
+gh pr merge <번호> --merge --delete-branch
+```
+
+- main 브랜치에 직접 push하지 않는다
+- 모든 변경은 PR을 통해 머지한다
+- 커밋은 체크포인트마다 자주 한다
+- 커밋 메시지: `feat:`, `fix:`, `refactor:`, `docs:` prefix 사용
+
 ## Build & Test
 
 ```bash
