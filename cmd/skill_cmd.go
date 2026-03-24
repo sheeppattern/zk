@@ -492,6 +492,37 @@ nete reflect --note 1
 nete export --note 1 --output snapshot.yaml
 ` + bt + `
 
+### 5. Serendipity — Cross-Pollination Discovery
+` + bt + `bash
+# Step 1: Pick 2–5 random memos (repeat nete memo random multiple times)
+nete memo random --format json
+nete memo random --format json
+nete memo random --format json
+
+# Step 2: Read each memo's full content
+nete memo get <id1> --format md
+nete memo get <id2> --format md
+nete memo get <id3> --format md
+
+# Step 3: Analyze & link (you, the agent, do this)
+# - Find non-obvious connections between the random memos
+# - Propose relation type and weight for each connection
+# - Delegate logical validation to a sub-agent if available; otherwise self-review
+# - Create links for validated connections only
+
+nete link add <id1> <id2> --type related --weight 0.6
+nete memo create --title "Serendipity: X connects to Y" \
+  --content "Found via random exploration: ..." --layer abstract
+` + bt + `
+
+**Serendipity workflow rules:**
+- Pick 2–5 memos randomly across ALL notes (not limited to one note)
+- Look for hidden patterns, analogies, contradictions, or causal chains
+- Use a sub-agent (if available) to verify logical coherence before creating links
+- If no sub-agent, self-review: ask "Would a skeptic accept this connection?"
+- Only create links when the connection is defensible — skip forced associations
+- Tag serendipity-born memos with ` + "`serendipity`" + ` for traceability
+
 ## Storage
 
 ` + bt + `
