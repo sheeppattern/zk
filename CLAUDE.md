@@ -78,7 +78,7 @@ main.go → cmd/ → internal/store/ → SQLite (store.db)
 
 ### Key Patterns
 
-**Store path resolution** (`getStorePath` in root.go): `--path` flag → `NETEMEMORY_PATH` env → `~/.nete-memory`. DB file: `{store_path}/store.db`.
+**Store path resolution** (`getStorePath` in root.go): `--path` flag → `NETE_PATH` env → `~/.nete`. DB file: `{store_path}/store.db`.
 
 **Note scoping**: `flagNote=0` = global, non-zero = specific note container.
 

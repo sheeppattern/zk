@@ -51,8 +51,8 @@ var migrateCmd = &cobra.Command{
 	Use:   "migrate <old-store-path>",
 	Short: "Migrate old .md file store to new SQLite format",
 	Long:  "Reads projects and notes from an old file-based nete store and imports them into the new SQLite store.",
-	Example: `  nete migrate ~/.nete-memory
-  nete migrate ~/.nete-memory --dry-run`,
+	Example: `  nete migrate ~/.nete
+  nete migrate ~/.nete --dry-run`,
 	Args: cobra.ExactArgs(1),
 	RunE: runMigrate,
 }

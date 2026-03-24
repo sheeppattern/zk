@@ -128,8 +128,8 @@ func TestCustomRelationTypes(t *testing.T) {
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
-	if !strings.Contains(cfg.StorePath, ".nete-memory") {
-		t.Fatalf("StorePath = %q; want to contain .nete-memory", cfg.StorePath)
+	if !strings.Contains(cfg.StorePath, ".nete") {
+		t.Fatalf("StorePath = %q; want to contain .nete", cfg.StorePath)
 	}
 	if cfg.DefaultFormat != "md" {
 		t.Fatalf("DefaultFormat = %q; want %q", cfg.DefaultFormat, "md")

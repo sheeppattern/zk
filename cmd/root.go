@@ -60,12 +60,12 @@ func Execute() {
 }
 
 // getStorePath returns the store directory path by checking:
-// 1) --path flag value, 2) NETEMEMORY_PATH env var, 3) default ~/.nete-memory.
+// 1) --path flag value, 2) NETE_PATH env var, 3) default ~/.nete.
 func getStorePath(cmd *cobra.Command) string {
 	if p, _ := cmd.Flags().GetString("path"); p != "" {
 		return p
 	}
-	if env := os.Getenv("NETEMEMORY_PATH"); env != "" {
+	if env := os.Getenv("NETE_PATH"); env != "" {
 		return env
 	}
 	home, err := os.UserHomeDir()
@@ -73,7 +73,7 @@ func getStorePath(cmd *cobra.Command) string {
 		fmt.Fprintln(os.Stderr, "cannot determine home directory:", err)
 		os.Exit(1)
 	}
-	return filepath.Join(home, ".nete-memory")
+	return filepath.Join(home, ".nete")
 }
 
 // getDBPath returns the path to store.db file.

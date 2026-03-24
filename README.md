@@ -217,8 +217,8 @@ nete schema link         # 링크 필드 상세
 ### 마이그레이션 (v0.3 → v0.4)
 
 ```bash
-nete migrate ~/.nete-memory              # 기존 .md 파일 → SQLite 변환
-nete migrate ~/.nete-memory --dry-run    # 미리보기
+nete migrate ~/.nete              # 기존 .md 파일 → SQLite 변환
+nete migrate ~/.nete --dry-run    # 미리보기
 ```
 
 ### 버전 관리
@@ -250,7 +250,7 @@ MEMOS=$(nete search "Redis" --note 1 --format json --quiet 2>/dev/null)
 ## 저장소 구조
 
 ```
-~/.nete-memory/
+~/.nete/
 └── store.db     # 단일 SQLite 데이터베이스
 ```
 

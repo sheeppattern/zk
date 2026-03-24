@@ -41,11 +41,11 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// runZK executes the nete binary with NETEMEMORY_PATH pointing to storeDir.
+// runZK executes the nete binary with NETE_PATH pointing to storeDir.
 func runZK(t *testing.T, storeDir string, args ...string) (string, string, error) {
 	t.Helper()
 	cmd := exec.Command(zkBinary, args...)
-	cmd.Env = append(os.Environ(), "NETEMEMORY_PATH="+storeDir)
+	cmd.Env = append(os.Environ(), "NETE_PATH="+storeDir)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
