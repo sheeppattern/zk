@@ -221,6 +221,28 @@ nete migrate ~/.nete              # 기존 .md 파일 → SQLite 변환
 nete migrate ~/.nete --dry-run    # 미리보기
 ```
 
+### 세렌디피티 — 교차 수분 발견
+
+무작위 메모에서 숨겨진 연결고리를 발견하는 워크플로우.
+
+```bash
+# 1. 무작위 메모 2~5개 뽑기
+nete memo random --format json   # 반복 실행
+
+# 2. 각 메모 내용 확인
+nete memo get <id> --format md
+
+# 3. 에이전트가 연결 분석 → 서브에이전트로 논리 검증 → 링크 생성
+nete link add <id1> <id2> --type related --weight 0.6
+nete memo create --title "Serendipity: X connects to Y" \
+  --content "..." --layer abstract --tags "serendipity"
+```
+
+- 모든 노트에서 무작위로 뽑음 (특정 노트에 한정하지 않음)
+- 숨겨진 패턴, 유사성, 모순, 인과관계를 탐색
+- 서브에이전트(가용 시)에게 논리적 결함 검증을 위임
+- 검증된 연결만 링크로 기록, `serendipity` 태그로 추적
+
 ### 버전 관리
 
 ```bash
@@ -265,6 +287,37 @@ MEMOS=$(nete search "Redis" --note 1 --format json --quiet 2>/dev/null)
 - **설정 관리**: [viper](https://github.com/spf13/viper)
 
 > Single binary, zero runtime dependencies.
+
+## 부록: 이 프로젝트는 Manyfast로 만들어졌습니다
+
+이 프로젝트의 기획 문서(PRD, 요구사항, 기능, 스펙)는 [Manyfast](https://manyfast.io?utm_source=github&utm_medium=readme&utm_campaign=nete)로 작성 및 관리되었습니다.
+
+> Planning documents (PRD, requirements, features, specs) were created and managed with [Manyfast](https://manyfast.io?utm_source=github&utm_medium=readme&utm_campaign=nete).
+
+### 기획에서 개발까지
+
+1. **Manyfast에서 PRD 작성**: 제품 목표, 사용자 문제, 솔루션, 차별점, KPI, 리스크 정의
+2. **요구사항 12개 정의**: PRD 기반 요구사항 → 기능 → 스펙 계층 구조
+3. **AI 에이전트와 협업 개발**: Manyfast CLI로 기획 문서를 읽고, 진행도를 실시간 추적
+4. **MVP 완료**: 기획 문서 작성부터 전체 구현까지 약 **30~40분** 소요
+
+> 1. PRD in Manyfast: goals, problems, solutions, KPIs, risks
+> 2. 12 requirements defined: hierarchical requirement → feature → spec structure
+> 3. AI-assisted development with real-time progress tracking via Manyfast CLI
+> 4. MVP complete: ~30-40 minutes from planning to full implementation
+
+### 최종 산출물
+
+| 항목 | 수량 |
+|------|------|
+| 요구사항 (Requirements) | 12 (전체 done) |
+| 기능 (Features) | 24 |
+| 스펙 (Specs) | 58 |
+| CLI 명령어 | 35+ |
+| Go 소스 파일 | 17 |
+| 테스트 | 46 |
+
+> Manyfast Project ID: `5fc2a8ca-c59b-4fb3-a0c7-c5744137028b`
 
 ## 라이선스
 
