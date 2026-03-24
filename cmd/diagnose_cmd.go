@@ -37,26 +37,29 @@ type DiagnosticSummary struct {
 var diagnoseCmd = &cobra.Command{
 	Use:   "diagnose",
 	Short: "Diagnose storage for broken links, orphans, and invalid data",
-	Long: "Run diagnostic checks on the note store to find broken links, orphan notes, invalid relation types, invalid weights, and duplicate IDs.",
+	Long:  "Run diagnostic checks on the note store to find broken links, orphan notes, invalid relation types, invalid weights, duplicate IDs, and missing backlinks. Use --fix to auto-repair.",
 	Example: `  zk diagnose --project P-XXXXXX
-  zk diagnose --format md`,
+  zk diagnose --format md
+  zk diagnose --fix --project P-XXXXXX`,
 	RunE: runDiagnose,
 }
 
 func init() {
+	diagnoseCmd.Flags().Bool("fix", false, "auto-repair broken links and missing backlinks")
 	rootCmd.AddCommand(diagnoseCmd)
 }
 
 func runDiagnose(cmd *cobra.Command, args []string) error {
+	fix, _ := cmd.Flags().GetBool("fix")
 	s := store.NewStore(getStorePath(cmd))
 	f := getFormatter()
 
 	notes, noteErrors := s.ListNotesPartial(flagProject)
 
-	// Build cross-project ID set for link validation.
-	allNoteIDs := make(map[string]bool)
+	// Build cross-project note map for link validation and backlink checks.
+	allNotes := make(map[string]*model.Note)
 	for _, n := range notes {
-		allNoteIDs[n.ID] = true
+		allNotes[n.ID] = n
 	}
 	projects, _ := s.ListProjects()
 	for _, p := range projects {
@@ -65,17 +68,17 @@ func runDiagnose(cmd *cobra.Command, args []string) error {
 		}
 		pNotes, _ := s.ListNotesPartial(p.ID)
 		for _, n := range pNotes {
-			allNoteIDs[n.ID] = true
+			allNotes[n.ID] = n
 		}
 	}
 	if flagProject != "" {
 		gNotes, _ := s.ListNotesPartial("")
 		for _, n := range gNotes {
-			allNoteIDs[n.ID] = true
+			allNotes[n.ID] = n
 		}
 	}
 
-	report := buildDiagnosticReport(notes, allNoteIDs)
+	report := buildDiagnosticReport(notes, allNotes, fix, s)
 
 	// Add corrupted file errors from partial listing.
 	for _, ne := range noteErrors {
@@ -104,7 +107,7 @@ func runDiagnose(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func buildDiagnosticReport(notes []*model.Note, allNoteIDs map[string]bool) *DiagnosticReport {
+func buildDiagnosticReport(notes []*model.Note, allNotes map[string]*model.Note, fix bool, s *store.Store) *DiagnosticReport {
 	report := &DiagnosticReport{
 		Errors:   []DiagnosticItem{},
 		Warnings: []DiagnosticItem{},
@@ -125,16 +128,22 @@ func buildDiagnosticReport(notes []*model.Note, allNoteIDs map[string]bool) *Dia
 	totalLinks := 0
 	for _, n := range notes {
 		totalLinks += len(n.Links)
-		for _, link := range n.Links {
+		brokenIdxs := []int{}
+		for i, link := range n.Links {
 			hasIncoming[link.TargetID] = true
 
 			// Check broken links (against all projects, not just current).
-			if !allNoteIDs[link.TargetID] {
-				report.Errors = append(report.Errors, DiagnosticItem{
-					Severity: "error",
-					NoteID:   n.ID,
-					Message:  fmt.Sprintf("broken link: target note %q does not exist", link.TargetID),
-				})
+			if allNotes[link.TargetID] == nil {
+				if fix {
+					brokenIdxs = append(brokenIdxs, i)
+				} else {
+					report.Errors = append(report.Errors, DiagnosticItem{
+						Severity: "error",
+						NoteID:   n.ID,
+						Message:  fmt.Sprintf("broken link: target note %q does not exist", link.TargetID),
+					})
+				}
+				continue
 			}
 
 			// Check invalid relation types.
@@ -155,8 +164,62 @@ func buildDiagnosticReport(notes []*model.Note, allNoteIDs map[string]bool) *Dia
 				})
 			}
 		}
+
+		// Fix: remove broken links.
+		if fix && len(brokenIdxs) > 0 {
+			removed := map[int]bool{}
+			brokenTargets := make([]string, 0, len(brokenIdxs))
+			for _, idx := range brokenIdxs {
+				removed[idx] = true
+				brokenTargets = append(brokenTargets, n.Links[idx].TargetID)
+			}
+			cleaned := make([]model.Link, 0, len(n.Links)-len(brokenIdxs))
+			for i, l := range n.Links {
+				if !removed[i] {
+					cleaned = append(cleaned, l)
+				}
+			}
+			n.Links = cleaned
+			if err := s.UpdateNote(n); err != nil {
+				statusf("fix failed for %s: %v", n.ID, err)
+			} else {
+				for _, tgt := range brokenTargets {
+					statusf("repaired: removed broken link %s→%s", n.ID, tgt)
+				}
+			}
+		}
 	}
 	report.TotalLinks = totalLinks
+
+	// Check for missing backlinks.
+	for _, n := range notes {
+		for _, link := range n.Links {
+			target := allNotes[link.TargetID]
+			if target == nil {
+				continue
+			}
+			if !hasLink(target.Links, n.ID, link.RelationType) {
+				if fix {
+					target.Links = append(target.Links, model.Link{
+						TargetID:     n.ID,
+						RelationType: link.RelationType,
+						Weight:       link.Weight,
+					})
+					if err := s.UpdateNote(target); err != nil {
+						statusf("fix failed for %s: %v", target.ID, err)
+					} else {
+						statusf("repaired: added backlink %s→%s (%s, %.2f)", target.ID, n.ID, link.RelationType, link.Weight)
+					}
+				} else {
+					report.Warnings = append(report.Warnings, DiagnosticItem{
+						Severity: "warning",
+						NoteID:   n.ID,
+						Message:  fmt.Sprintf("missing backlink: %s→%s (%s) exists but %s has no reverse link to %s", n.ID, link.TargetID, link.RelationType, link.TargetID, n.ID),
+					})
+				}
+			}
+		}
+	}
 
 	// Check for orphan notes: no outgoing links AND no incoming links.
 	for _, n := range notes {

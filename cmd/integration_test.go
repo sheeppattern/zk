@@ -1100,6 +1100,118 @@ func TestTagReplaceDuplicates(t *testing.T) {
 	}
 }
 
+func TestCLIDiagnoseMissingBacklink(t *testing.T) {
+	storeDir := initStore(t)
+	projID := createProject(t, storeDir, "backlink-proj", "")
+
+	noteA := createNote(t, storeDir, projID, "Note A", "content A", nil)
+	noteB := createNote(t, storeDir, projID, "Note B", "content B", nil)
+
+	// Create bidirectional link via CLI.
+	mustRunZK(t, storeDir, "link", "add", noteA, noteB, "--type", "supports", "--project", projID)
+
+	// Manually remove the backlink from noteB's file to create inconsistency.
+	noteBPath := filepath.Join(storeDir, "projects", projID, "notes", noteB+".md")
+	data, err := os.ReadFile(noteBPath)
+	if err != nil {
+		t.Fatalf("read noteB file: %v", err)
+	}
+	// Replace the links section to empty.
+	content := string(data)
+	content = strings.Replace(content, "links:", "links: []", 1)
+	// Remove the link entry lines (- target_id: ... etc).
+	lines := strings.Split(content, "\n")
+	var cleaned []string
+	skip := false
+	for _, line := range lines {
+		if strings.Contains(line, "- target_id:") {
+			skip = true
+			continue
+		}
+		if skip && (strings.HasPrefix(strings.TrimSpace(line), "relation_type:") || strings.HasPrefix(strings.TrimSpace(line), "weight:")) {
+			continue
+		}
+		skip = false
+		cleaned = append(cleaned, line)
+	}
+	if err := os.WriteFile(noteBPath, []byte(strings.Join(cleaned, "\n")), 0644); err != nil {
+		t.Fatalf("write noteB file: %v", err)
+	}
+
+	// Diagnose should detect missing backlink.
+	stdout := mustRunZK(t, storeDir, "diagnose", "--project", projID)
+	var report map[string]interface{}
+	parseJSON(t, stdout, &report)
+	warnings := report["warnings"].([]interface{})
+	found := false
+	for _, w := range warnings {
+		msg := w.(map[string]interface{})["message"].(string)
+		if strings.Contains(msg, "missing backlink") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected 'missing backlink' warning, got: %s", stdout)
+	}
+
+	// Fix should repair the missing backlink.
+	mustRunZK(t, storeDir, "diagnose", "--fix", "--project", projID)
+
+	// Re-diagnose: should be healthy now.
+	stdout = mustRunZK(t, storeDir, "diagnose", "--project", projID)
+	parseJSON(t, stdout, &report)
+	summary := report["summary"].(map[string]interface{})
+	if summary["health_score"] != "healthy" {
+		t.Fatalf("expected healthy after fix, got: %s", stdout)
+	}
+}
+
+func TestCLIDiagnoseFixBrokenLink(t *testing.T) {
+	storeDir := initStore(t)
+	projID := createProject(t, storeDir, "broken-proj", "")
+
+	noteA := createNote(t, storeDir, projID, "Note A", "content A", nil)
+	noteB := createNote(t, storeDir, projID, "Note B", "content B", nil)
+
+	mustRunZK(t, storeDir, "link", "add", noteA, noteB, "--type", "supports", "--project", projID)
+
+	// Delete noteB's file to create a broken link.
+	noteBPath := filepath.Join(storeDir, "projects", projID, "notes", noteB+".md")
+	if err := os.Remove(noteBPath); err != nil {
+		t.Fatalf("remove noteB file: %v", err)
+	}
+
+	// Diagnose should detect broken link.
+	stdout := mustRunZK(t, storeDir, "diagnose", "--project", projID)
+	var report map[string]interface{}
+	parseJSON(t, stdout, &report)
+	errors := report["errors"].([]interface{})
+	found := false
+	for _, e := range errors {
+		msg := e.(map[string]interface{})["message"].(string)
+		if strings.Contains(msg, "broken link") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected 'broken link' error, got: %s", stdout)
+	}
+
+	// Fix should remove the broken link.
+	mustRunZK(t, storeDir, "diagnose", "--fix", "--project", projID)
+
+	// Re-diagnose: no more broken link errors.
+	stdout = mustRunZK(t, storeDir, "diagnose", "--project", projID)
+	parseJSON(t, stdout, &report)
+	summary := report["summary"].(map[string]interface{})
+	errCount := summary["error_count"].(float64)
+	if errCount != 0 {
+		t.Fatalf("expected 0 errors after fix, got: %s", stdout)
+	}
+}
+
 func TestCLINoteRandom(t *testing.T) {
 	storeDir := initStore(t)
 	projID := createProject(t, storeDir, "rand-proj", "")

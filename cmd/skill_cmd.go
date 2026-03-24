@@ -463,6 +463,7 @@ zk tag batch-add <tag> <noteID1> [noteID2...]
 
 ` + bt + `bash
 zk diagnose --project <id>
+zk diagnose --fix --project <id>              # Auto-repair broken links and missing backlinks
 ` + bt + `
 
 Checks: broken links, corrupted files, orphan notes, invalid relation types, out-of-range weights.
