@@ -82,6 +82,10 @@ var linkRemoveCmd = &cobra.Command{
 			relType = "related"
 		}
 
+		if !model.IsValidRelationType(relType) {
+			return fmt.Errorf("invalid relation type %q (valid: %s)", relType, strings.Join(model.ValidRelationTypes(), ", "))
+		}
+
 		s, err := openStore(cmd)
 		if err != nil {
 			return err
@@ -148,19 +152,19 @@ var linkListCmd = &cobra.Command{
 			})
 		}
 
+		if outgoing == nil {
+			outgoing = []model.Link{}
+		}
+		if incoming == nil {
+			incoming = []model.Link{}
+		}
+
 		result := struct {
 			Outgoing []model.Link `json:"outgoing" yaml:"outgoing"`
 			Incoming []model.Link `json:"incoming" yaml:"incoming"`
 		}{
 			Outgoing: outgoing,
 			Incoming: incoming,
-		}
-
-		if result.Outgoing == nil {
-			result.Outgoing = []model.Link{}
-		}
-		if result.Incoming == nil {
-			result.Incoming = []model.Link{}
 		}
 
 		switch f.Format {

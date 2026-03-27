@@ -458,8 +458,10 @@ func (s *Store) SearchMemos(query string, opts SearchOptions) ([]*model.Memo, er
 		args = append(args, opts.CreatedAfter.Format(time.RFC3339))
 	}
 	if !opts.CreatedBefore.IsZero() {
-		conditions = append(conditions, "m.created_at <= ?")
-		args = append(args, opts.CreatedBefore.Format(time.RFC3339))
+		// Add 24 hours so "created-before 2026-01-15" includes the entire day.
+		endOfDay := opts.CreatedBefore.Add(24 * time.Hour)
+		conditions = append(conditions, "m.created_at < ?")
+		args = append(args, endOfDay.Format(time.RFC3339))
 	}
 	// Tag filtering: exact match via json_each().
 	for _, tag := range opts.Tags {
@@ -589,6 +591,29 @@ func (s *Store) ListLinks(memoID int64) (outgoing []model.Link, incoming []model
 		incoming = append(incoming, l)
 	}
 	return outgoing, incoming, rows2.Err()
+}
+
+// ListAllLinks returns all links in a single query, grouped by memo ID.
+// Returns outgoing and incoming maps keyed by memo ID.
+func (s *Store) ListAllLinks() (outgoing map[int64][]model.Link, incoming map[int64][]model.Link, err error) {
+	outgoing = make(map[int64][]model.Link)
+	incoming = make(map[int64][]model.Link)
+
+	rows, err := s.db.Query("SELECT source_id, target_id, relation_type, weight FROM links")
+	if err != nil {
+		return nil, nil, fmt.Errorf("list all links: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var l model.Link
+		if err := rows.Scan(&l.SourceID, &l.TargetID, &l.RelationType, &l.Weight); err != nil {
+			return nil, nil, fmt.Errorf("scan link: %w", err)
+		}
+		outgoing[l.SourceID] = append(outgoing[l.SourceID], l)
+		incoming[l.TargetID] = append(incoming[l.TargetID], l)
+	}
+	return outgoing, incoming, rows.Err()
 }
 
 // maxBFSDepth is the hard cap on BFS traversal depth.

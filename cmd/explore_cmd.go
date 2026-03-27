@@ -69,7 +69,10 @@ var exploreCmd = &cobra.Command{
 		}
 
 		// Build memo map for neighbor lookup.
-		allMemos, _ := s.ListAllMemos()
+		allMemos, err := s.ListAllMemos()
+		if err != nil {
+			return fmt.Errorf("list memos: %w", err)
+		}
 		memoMap := make(map[int64]*model.Memo, len(allMemos))
 		for _, m := range allMemos {
 			memoMap[m.ID] = m
@@ -80,7 +83,10 @@ var exploreCmd = &cobra.Command{
 		result.Current = makeExploreNodeFromMemo(startMemo, includeContent)
 
 		// Outgoing and incoming links from the store.
-		outgoing, incoming, _ := s.ListLinks(memoID)
+		outgoing, incoming, err := s.ListLinks(memoID)
+		if err != nil {
+			return fmt.Errorf("list links for memo %d: %w", memoID, err)
+		}
 
 		result.Outgoing = []ExploreEdge{}
 		for _, link := range outgoing {

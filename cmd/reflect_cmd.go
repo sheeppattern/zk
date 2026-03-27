@@ -64,16 +64,10 @@ func runReflect(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("list memos: %w", err)
 	}
 
-	// Build link maps from the store.
-	outgoingMap := make(map[int64][]model.Link)
-	incomingMap := make(map[int64][]model.Link)
-	for _, m := range memos {
-		out, in, lErr := s.ListLinks(m.ID)
-		if lErr != nil {
-			continue
-		}
-		outgoingMap[m.ID] = out
-		incomingMap[m.ID] = in
+	// Build link maps from the store in a single batch query.
+	outgoingMap, incomingMap, err := s.ListAllLinks()
+	if err != nil {
+		return fmt.Errorf("list links: %w", err)
 	}
 
 	report := buildReflectReport(memos, outgoingMap, incomingMap)

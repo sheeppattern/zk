@@ -120,10 +120,23 @@ func (f *Formatter) PrintConfig(cfg *model.Config) error {
 	case "yaml":
 		return f.PrintYAML(cfg)
 	case "md":
-		return f.PrintYAML(cfg)
+		return f.printConfigMD(cfg)
 	default:
 		return fmt.Errorf("unsupported format: %s", f.Format)
 	}
+}
+
+func (f *Formatter) printConfigMD(cfg *model.Config) error {
+	var b strings.Builder
+	fmt.Fprintln(&b, "# Configuration")
+	fmt.Fprintln(&b)
+	fmt.Fprintf(&b, "| Key | Value |\n")
+	fmt.Fprintf(&b, "|-----|-------|\n")
+	fmt.Fprintf(&b, "| default_note | %s |\n", cfg.DefaultNote)
+	fmt.Fprintf(&b, "| default_format | %s |\n", cfg.DefaultFormat)
+	fmt.Fprintf(&b, "| default_author | %s |\n", cfg.DefaultAuthor)
+	_, err := fmt.Fprint(os.Stdout, b.String())
+	return err
 }
 
 // PrintSuccess prints a success message to stderr.
