@@ -29,7 +29,7 @@ Project files (Cursor, Copilot, Windsurf) require --project-dir.`,
 }
 
 func init() {
-	skillGenerateCmd.Flags().String("agents", "all", "comma-separated agent targets: all, claude, gemini, codex, agent-skills, agent-skills-project, cursor, copilot, windsurf")
+	skillGenerateCmd.Flags().String("agents", "all", "comma-separated agent targets: all, claude, gemini, agent-skills, agent-skills-project, cursor, copilot, windsurf")
 	skillGenerateCmd.Flags().String("project-dir", "", "project directory for project-level files (cursor, copilot, windsurf)")
 	skillGenerateCmd.Flags().Bool("global-only", false, "only generate global (user-level) files")
 	skillCmd.AddCommand(skillGenerateCmd)
@@ -47,7 +47,6 @@ func allAgentTargets() []agentTarget {
 	return []agentTarget{
 		{Name: "claude", Global: true, WriteFn: writeClaudeSkill},
 		{Name: "gemini", Global: true, WriteFn: writeGeminiInstruction},
-		{Name: "codex", Global: true, WriteFn: writeCodexInstruction},
 		{Name: "agent-skills", Global: true, WriteFn: writeAgentSkillsGlobal},
 		{Name: "agent-skills-project", Global: false, WriteFn: writeAgentSkillsProject},
 		{Name: "cursor", Global: false, WriteFn: writeCursorRule},
@@ -167,25 +166,26 @@ func writeClaudeSkill(home string) (string, error) {
 	return skillPath, nil
 }
 
-// Gemini CLI: ~/.gemini/instructions/nete.md
+// Gemini CLI: ~/.gemini/skills/nete/SKILL.md + references/domain-guide.md
 func writeGeminiInstruction(home string) (string, error) {
-	path := filepath.Join(home, ".gemini", "instructions", "nete.md")
-	if err := writeFile(path, neteInstructionContent); err != nil {
+	dir := filepath.Join(home, ".gemini", "skills", "nete")
+	skillPath := filepath.Join(dir, "SKILL.md")
+
+	content := geminiFrontmatter + neteInstructionContent
+	if err := writeFile(skillPath, content); err != nil {
 		return "", err
 	}
-	return path, nil
-}
 
-// Codex CLI: ~/.codex/instructions/nete.md
-func writeCodexInstruction(home string) (string, error) {
-	path := filepath.Join(home, ".codex", "instructions", "nete.md")
-	if err := writeFile(path, neteInstructionContent); err != nil {
+	domainPath := filepath.Join(dir, "references", "domain-guide.md")
+	if err := writeFile(domainPath, domainGuideContent); err != nil {
 		return "", err
 	}
-	return path, nil
+
+	return skillPath, nil
 }
 
-// Agent Skills Standard (agentskills.io): ~/.agents/skills/nete/SKILL.md (global)
+// Agent Skills Standard: ~/.agents/skills/nete/SKILL.md (global)
+// Codex CLI also discovers skills from this path ($HOME/.agents/skills)
 func writeAgentSkillsGlobal(home string) (string, error) {
 	return writeAgentSkillsDir(filepath.Join(home, ".agents", "skills", "nete"))
 }
@@ -244,7 +244,14 @@ func writeWindsurfRule(projectDir string) (string, error) {
 
 const claudeFrontmatter = `---
 name: nete
-description: "Zettelkasten memory CLI — AI 에이전트용 지식 관리 도구. SQLite + FTS5 풀텍스트 검색, 메모 CRUD, 관계 타입+가중치 링크, 노트 범위 관리, 웹 GUI를 지원합니다."
+description: "Zettelkasten memory CLI — AI agent knowledge management with SQLite + FTS5 full-text search, memo CRUD, typed+weighted links, note scoping, and web GUI. Use this skill whenever knowledge capture, note-taking, memo recording, insight tracking, or knowledge graph operations are needed. MUST trigger when: the user mentions remembering something for later, recording findings, building a knowledge base, linking ideas, tracking research, capturing learnings, reviewing past notes, or any form of structured knowledge management. Also trigger when the user says 'memo', 'note', 'zettelkasten', 'nete', 'knowledge graph', 'link ideas', 'record this', 'save this insight', 'what did I learn', 'search my notes', or asks to recall/retrieve previous knowledge. Even if the user doesn't explicitly say 'nete', if they want to persist knowledge across sessions or connect ideas, this is the right skill."
+---
+
+`
+
+const geminiFrontmatter = `---
+name: nete
+description: "Zettelkasten memory CLI — AI agent knowledge management with SQLite + FTS5 full-text search, memo CRUD, typed+weighted links, note scoping, and web GUI. Use this skill whenever knowledge capture, note-taking, memo recording, insight tracking, or knowledge graph operations are needed."
 ---
 
 `
@@ -271,37 +278,45 @@ const bt = "```"
 var neteInstructionContent = `# Zettelkasten Memory CLI (nete)
 
 > AI 에이전트가 지식을 구조화하고 연결하는 CLI 도구.
-> A CLI tool for AI agents to structure and connect knowledge.
 
-## When to Use nete
+## When to Trigger — Decision Guide
 
-You should **proactively** use nete whenever you:
-- Learn something new during a task (create a concrete memo)
-- Notice a pattern, tension, or contradiction (create an abstract memo)
-- Make a decision or change your understanding (link with supports/contradicts/replaces/invalidates)
-- Finish a research or analysis task (summarize findings as memos)
-- Start a new session and need context (search/explore existing memos)
+Use nete in these situations. Do not wait to be asked — initiate proactively:
 
-**Do not wait to be asked.** If you are thinking about something worth remembering, record it. The value of nete comes from habitual use, not occasional use.
+| Situation | Action |
+|-----------|--------|
+| User says "remember this", "save this", "record this" | ` + "`nete memo create`" + ` or ` + "`nete quickmemo`" + ` |
+| Research or analysis task produces findings | Create concrete memos for each finding |
+| You notice a pattern, tension, or contradiction | Create abstract memo + link to evidence |
+| User asks "what did we find?", "what do I know about X?" | ` + "`nete search`" + ` |
+| A decision is made or understanding changes | Create memo + ` + "`replaces`" + `/` + "`invalidates`" + ` link |
+| Starting a new session that continues prior work | ` + "`nete search`" + ` to restore context |
+| User mentions "knowledge base", "notes", "memos" | Use nete for all operations |
+| Debugging produces insights worth preserving | Create memo with ` + "`debugging`" + ` tag |
+| Code review reveals patterns or anti-patterns | Create memo with ` + "`code-review`" + ` tag |
+| Project retrospective or post-mortem | Create note + structured memos |
+
+**Key principle**: If you are thinking something worth remembering beyond this conversation, it belongs in nete.
 
 ## Concepts
 
 - **Note**: a container that groups related memos (like a folder/project)
 - **Memo**: an atomic knowledge record (the actual content)
 - **Link**: a typed, weighted connection between memos (single-stored, queried both ways)
-- IDs are integers (1, 2, 3...), auto-incremented by the database
+- IDs are integers (1, 2, 3...), auto-incremented
 
 ## Global Options
 
 ` + bt + `bash
---format <fmt>     # Output format: json (default) | yaml | md
---note <id>        # Note scope for memos (0 = global)
+--format <fmt>     # json (default) | yaml | md
+--note <id>        # Note scope (0 = global)
 --verbose          # Debug output to stderr
---quiet            # Suppress stderr status messages
+--quiet            # Suppress stderr status
 ` + bt + `
 
-## Init & Config
+## Command Reference
 
+### Init & Config
 ` + bt + `bash
 nete init                              # Initialize store (SQLite)
 nete init --path /custom               # Custom path
@@ -311,8 +326,7 @@ nete config set default_format yaml    # Set default output format
 nete config set default_author claude  # Set default memo author
 ` + bt + `
 
-## Notes (Containers)
-
+### Notes (Containers)
 ` + bt + `bash
 nete note create <name> --description "desc"
 nete note list
@@ -320,7 +334,7 @@ nete note get <id>       # Includes memo count, link count
 nete note delete <id>
 ` + bt + `
 
-## Memos (Concrete/Abstract Layers)
+### Memos (Concrete/Abstract Layers)
 
 Every memo belongs to a layer:
 - **concrete** (default): facts, observations, data records
@@ -350,43 +364,39 @@ nete memo random --layer abstract       # Random abstract memo
 nete memo create --title "Title" --content "..." --author claude --note <id>
 ` + bt + `
 
-## Quick Memo
-
-Minimal memo creation from a single text argument:
-
+### Quick Memo
 ` + bt + `bash
 nete quickmemo "My quick thought here"
 nete quickmemo "Observation about X" --note <id>
 nete quickmemo "Found a pattern" --author claude
 ` + bt + `
-
 - Title: auto-derived (first 50 chars, truncated at word boundary)
 - Content: full input text
 - Layer: concrete (default)
 
-## Links (Relation Type + Weight)
+### Links (Relation Type + Weight)
 
-Links are stored once and queried both directions (no bidirectional duplication).
+Links are stored once and queried both directions.
 
 ` + bt + `bash
 nete link add <src> <tgt> --type supports --weight 0.8
 nete link remove <src> <tgt> --type supports
-nete link list <memoID>                              # Show outgoing + incoming
-nete link list <memoID> --type supports              # Filter by relation type
+nete link list <memoID>                              # Outgoing + incoming
+nete link list <memoID> --type supports              # Filter by relation
 nete link list <memoID> --sort-weight                # Sort by weight desc
-nete link list <memoID> --depth 3                    # BFS traversal (max depth 5)
+nete link list <memoID> --depth 3                    # BFS traversal (max 5)
 ` + bt + `
 
-Relation types: related (default), supports, contradicts, extends, causes, example-of, abstracts, grounds, replaces, invalidates
+**Relation types**: related (default), supports, contradicts, extends, causes, example-of, abstracts, grounds, replaces, invalidates
 
-## Search (FTS5 Full-Text)
+### Search (FTS5 Full-Text)
 
 Powered by SQLite FTS5 with BM25 ranking. Searches title, content, tags, and summary.
 
 ` + bt + `bash
 nete search <query>
 nete search "Redis" --tags "cache"
-nete search "auth" --sort relevance                  # relevance | created | updated
+nete search "auth" --sort relevance      # relevance | created | updated
 nete search "tension" --layer abstract --note <id>
 nete search "pattern" --author claude
 nete search "data" --created-after 2026-01-01 --created-before 2026-12-31
@@ -394,8 +404,7 @@ nete search "data" --created-after 2026-01-01 --created-before 2026-12-31
 
 FTS5 syntax: wrap in quotes for phrase match. Prefix matching with *.
 
-## Tags
-
+### Tags
 ` + bt + `bash
 nete tag add <memoID> <tag1> [tag2...]
 nete tag remove <memoID> <tag1> [tag2...]
@@ -404,35 +413,29 @@ nete tag list --note <id>
 nete tag batch-add <tag> <memoID1> [memoID2...]
 ` + bt + `
 
-## Diagnostics
-
+### Diagnostics
 ` + bt + `bash
 nete diagnose
 nete diagnose --format md
 ` + bt + `
-
 Checks: orphan memos, invalid relation types, out-of-range weights.
 
-## Export & Import
-
+### Export & Import
 ` + bt + `bash
 nete export --note <id> --format yaml --output backup.yaml
 nete import --file backup.yaml --note <id>
 ` + bt + `
 
-## Reflect — Insight Engine
-
+### Reflect — Insight Engine
 ` + bt + `bash
 nete reflect --note <id>                 # Show insight suggestions
 nete reflect --note <id> --format md     # Markdown report
 nete reflect --note <id> --apply         # Auto-create suggested abstract memos
 nete reflect --note <id> --suggest-links # Suggest missing links
 ` + bt + `
-
 Detects: tensions, hubs without abstraction, orphan memos, low abstraction ratio, similar unlinked memos.
 
-## Graph & Explore
-
+### Graph & Explore
 ` + bt + `bash
 nete graph --note <id>                               # Mermaid graph
 nete graph --note <id> --format-graph dot            # DOT format
@@ -440,17 +443,13 @@ nete explore <memoID> --depth 2                      # Show connections
 nete explore <memoID> --include-content --format md  # Full detail
 ` + bt + `
 
-## Web GUI
-
+### Web GUI
 ` + bt + `bash
 nete serve                               # http://127.0.0.1:8080
 nete serve --addr :3000                  # Custom port
 ` + bt + `
 
-Features: memo editor (title, summary, content, tags, status, source), incoming/outgoing link panels, neighborhood graph minimap, FTS5 search, note/memo tree explorer.
-
-## Schema Introspection
-
+### Schema Introspection
 ` + bt + `bash
 nete schema              # List all resources
 nete schema memo         # Memo field details
@@ -460,16 +459,17 @@ nete schema relation-types
 
 ## Agent Workflows
 
-### 1. Knowledge Accumulation
+### 1. Research Knowledge Accumulation
+When conducting research or analysis, capture findings as you go:
 ` + bt + `bash
-nete init
-nete note create "research" --description "Research project"
+nete note create "research-topic" --description "Research on X"
 nete memo create --title "Finding 1" --content "..." --tags "finding" --note 1
 nete memo create --title "Finding 2" --content "..." --tags "finding" --note 1
 nete link add 1 2 --type supports --weight 0.9
 ` + bt + `
 
 ### 2. Insight Derivation
+After accumulating concrete facts, derive patterns:
 ` + bt + `bash
 nete reflect --note 1 --format md       # Check what insights are missing
 nete reflect --note 1 --apply           # Auto-create abstract memos
@@ -477,7 +477,8 @@ nete memo create --title "Growth vs Retention" --content "..." --layer abstract 
 nete link add 1 3 --type abstracts --weight 0.8
 ` + bt + `
 
-### 3. Knowledge Exploration
+### 3. Context Restoration (Session Start)
+When continuing prior work, search for existing knowledge:
 ` + bt + `bash
 nete search "keyword" --note 1
 nete search "tension" --layer abstract
@@ -485,43 +486,79 @@ nete link list 1 --depth 2
 nete memo get 2
 ` + bt + `
 
-### 4. Maintenance
+### 4. Debugging Knowledge Capture
+When debugging produces reusable insights:
+` + bt + `bash
+nete memo create --title "Redis timeout under load" \
+  --content "Root cause: connection pool exhaustion when >100 concurrent..." \
+  --tags "debugging,redis,performance" --note <id>
+nete memo create --title "Fix: Redis pool sizing" \
+  --content "Set pool size to 2x expected concurrency..." \
+  --tags "debugging,redis,solution" --note <id>
+nete link add <problem-id> <solution-id> --type causes --weight 0.9
+` + bt + `
+
+### 5. Code Review Insights
+When code review reveals patterns worth preserving:
+` + bt + `bash
+nete memo create --title "Anti-pattern: nested callbacks in auth flow" \
+  --content "Found 3 instances of callback hell in auth module..." \
+  --tags "code-review,anti-pattern,auth" --layer concrete --note <id>
+nete memo create --title "Pattern: Promise chain for auth" \
+  --content "Refactored approach using async/await..." \
+  --tags "code-review,pattern,auth" --layer abstract --note <id>
+nete link add <anti-id> <pattern-id> --type replaces --weight 0.8
+` + bt + `
+
+### 6. Project Retrospective
+Structured post-mortem knowledge capture:
+` + bt + `bash
+nete note create "retro-sprint-42" --description "Sprint 42 retrospective"
+nete memo create --title "What worked: daily standups" --content "..." --tags "retro,positive" --note <id>
+nete memo create --title "What failed: late integration" --content "..." --tags "retro,negative" --note <id>
+nete memo create --title "Lesson: integrate early" --content "..." --layer abstract --tags "retro,lesson" --note <id>
+nete link add <failed-id> <lesson-id> --type abstracts --weight 0.9
+` + bt + `
+
+### 7. Serendipity — Cross-Pollination Discovery
+` + bt + `bash
+# Pick 2–5 random memos across ALL notes
+nete memo random --format json
+nete memo random --format json
+nete memo random --format json
+
+# Read each, find non-obvious connections
+nete memo get <id1> --format md
+nete memo get <id2> --format md
+
+# Create links for validated connections only
+nete link add <id1> <id2> --type related --weight 0.6
+nete memo create --title "Serendipity: X connects to Y" \
+  --content "Found via random exploration: ..." --layer abstract
+` + bt + `
+
+**Rules**: Pick across ALL notes. Only link defensible connections. Tag with ` + "`serendipity`" + `.
+
+### 8. Maintenance
 ` + bt + `bash
 nete diagnose
 nete reflect --note 1
 nete export --note 1 --output snapshot.yaml
 ` + bt + `
 
-### 5. Serendipity — Cross-Pollination Discovery
-` + bt + `bash
-# Step 1: Pick 2–5 random memos (repeat nete memo random multiple times)
-nete memo random --format json
-nete memo random --format json
-nete memo random --format json
+## Memo Quality Guidelines
 
-# Step 2: Read each memo's full content
-nete memo get <id1> --format md
-nete memo get <id2> --format md
-nete memo get <id3> --format md
+When creating memos, follow these standards:
 
-# Step 3: Analyze & link (you, the agent, do this)
-# - Find non-obvious connections between the random memos
-# - Propose relation type and weight for each connection
-# - Delegate logical validation to a sub-agent if available; otherwise self-review
-# - Create links for validated connections only
+**Titles**: Be specific and scannable. Not "Finding about auth" but "JWT token expiry causes silent logout after 24h".
 
-nete link add <id1> <id2> --type related --weight 0.6
-nete memo create --title "Serendipity: X connects to Y" \
-  --content "Found via random exploration: ..." --layer abstract
-` + bt + `
+**Content**: One idea per memo. If you're writing more than 3 paragraphs, split into multiple linked memos.
 
-**Serendipity workflow rules:**
-- Pick 2–5 memos randomly across ALL notes (not limited to one note)
-- Look for hidden patterns, analogies, contradictions, or causal chains
-- Use a sub-agent (if available) to verify logical coherence before creating links
-- If no sub-agent, self-review: ask "Would a skeptic accept this connection?"
-- Only create links when the connection is defensible — skip forced associations
-- Tag serendipity-born memos with ` + "`serendipity`" + ` for traceability
+**Tags**: Use consistent, lowercase tags. Combine domain tags (` + "`redis`" + `, ` + "`auth`" + `) with type tags (` + "`finding`" + `, ` + "`solution`" + `, ` + "`pattern`" + `).
+
+**Summaries**: Add ` + "`--summary`" + ` for content over 500 characters.
+
+**Links**: Every new memo should connect to at least one existing memo. Choose the most specific relation type — avoid defaulting to ` + "`related`" + `.
 
 ## Storage
 
@@ -543,6 +580,8 @@ Tables: notes, memos, memos_fts (FTS5), links, trash, config.
 - Deleted memos move to trash (recoverable)
 - Pipeline-safe: stdout = data, stderr = status/errors
 - exit code: 0=success, 1=error
+
+For domain knowledge and best practices, read ` + "`references/domain-guide.md`" + `.
 `
 
 var domainGuideContent = `# Zettelkasten Domain Guide
@@ -608,6 +647,27 @@ The power of nete comes from the interplay between layers:
 10. **Write summaries**: Memos over 500 chars benefit from a --summary for quick scanning
 11. **Use ` + "`nete quickmemo`" + `**: Fast capture when structure can wait
 
+## Title Writing Guide
+
+Good titles are scannable and specific. They should tell you what the memo says without opening it.
+
+| Bad | Good |
+|-----|------|
+| "Auth finding" | "JWT refresh token missing rotation causes session fixation" |
+| "Performance issue" | "API p99 latency spikes to 3s during batch imports" |
+| "Idea about caching" | "Redis read-through cache reduces DB load by 60%" |
+| "Bug" | "Race condition in order checkout when concurrent cart updates" |
+| "Tension" | "Tension: microservices autonomy vs data consistency" |
+
+## Tag Taxonomy
+
+Use consistent, lowercase tags. Combine dimensions:
+
+**Domain tags**: ` + "`auth`" + `, ` + "`redis`" + `, ` + "`api`" + `, ` + "`frontend`" + `, ` + "`database`" + `, ` + "`infra`" + `
+**Type tags**: ` + "`finding`" + `, ` + "`solution`" + `, ` + "`pattern`" + `, ` + "`anti-pattern`" + `, ` + "`decision`" + `, ` + "`question`" + `
+**Context tags**: ` + "`debugging`" + `, ` + "`code-review`" + `, ` + "`research`" + `, ` + "`retro`" + `, ` + "`serendipity`" + `
+**Priority tags**: ` + "`critical`" + `, ` + "`revisit`" + `, ` + "`archived`" + `
+
 ## Proactive Usage Mindset
 
 nete is not a passive archive — it is an active thinking tool. As an AI agent:
@@ -628,4 +688,6 @@ nete is not a passive archive — it is an active thinking tool. As an AI agent:
 - **Vague relations**: "related" for everything loses semantic richness
 - **Ignoring tensions**: contradicts links are the most valuable
 - **Appending endlessly**: Split into hypothesis → evidence → conclusion
+- **Generic titles**: "Finding 1", "Note about X" — be specific
+- **Tag chaos**: Inconsistent casing or synonyms (` + "`Redis`" + ` vs ` + "`redis`" + ` vs ` + "`cache`" + `)
 `
