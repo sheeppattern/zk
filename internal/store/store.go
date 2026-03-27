@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -408,9 +409,19 @@ func (s *Store) MoveMemo(memoID, targetNoteID int64) error {
 // ---------------------------------------------------------------------------
 
 // SearchMemos performs FTS5 search with optional filtering.
+// If query is a pure integer, it also matches memo ID directly.
 func (s *Store) SearchMemos(query string, opts SearchOptions) ([]*model.Memo, error) {
 	var args []interface{}
 	var conditions []string
+
+	// Check if query is a numeric ID.
+	queryID, isNumericQuery := int64(0), false
+	if query != "" {
+		if id, err := strconv.ParseInt(strings.TrimSpace(query), 10, 64); err == nil && id > 0 {
+			queryID = id
+			isNumericQuery = true
+		}
+	}
 
 	// Base: join memos with FTS results.
 	baseQuery := `SELECT m.id, m.title, m.content, m.tags, m.layer, m.note_id,
@@ -484,7 +495,29 @@ func (s *Store) SearchMemos(query string, opts SearchOptions) ([]*model.Memo, er
 		return nil, fmt.Errorf("search memos: %w", err)
 	}
 	defer rows.Close()
-	return scanMemos(rows)
+	results, err := scanMemos(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	// If query is a numeric ID, prepend the matching memo if not already in results.
+	if isNumericQuery {
+		memo, mErr := s.GetMemo(queryID)
+		if mErr == nil {
+			found := false
+			for _, r := range results {
+				if r.ID == queryID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				results = append([]*model.Memo{memo}, results...)
+			}
+		}
+	}
+
+	return results, nil
 }
 
 // ---------------------------------------------------------------------------
